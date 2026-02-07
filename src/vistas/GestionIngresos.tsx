@@ -16,7 +16,8 @@ import {
     ChevronUp,
     Receipt,
     Eye,
-    Download
+    Download,
+    X
 } from 'lucide-react';
 import { formatearFecha, getISODateLocal } from '../utilidades/fechas';
 
@@ -96,6 +97,7 @@ const GestionIngresos = ({ user }: any) => {
             document.body.removeChild(a);
         } catch (error) {
             console.error('Error al descargar:', error);
+            window.open(previewFile.url, '_blank');
         }
     };
 
@@ -379,7 +381,19 @@ const GestionIngresos = ({ user }: any) => {
                                                                             const isPdf = g.comprobante_url.toLowerCase().endsWith('.pdf');
                                                                             setPreviewFile({ url: fullUrl, type: isPdf ? 'pdf' : 'image' });
                                                                         }}
-                                                                        style={{ padding: '6px', color: 'var(--primary)' }}
+                                                                        style={{
+                                                                            background: 'rgba(16, 185, 129, 0.1)',
+                                                                            border: 'none',
+                                                                            color: 'var(--primary)',
+                                                                            cursor: 'pointer',
+                                                                            display: 'flex',
+                                                                            alignItems: 'center',
+                                                                            justifyContent: 'center',
+                                                                            width: '30px',
+                                                                            height: '30px',
+                                                                            borderRadius: '8px'
+                                                                        }}
+                                                                        title="Ver comprobante"
                                                                     >
                                                                         <Eye size={16} />
                                                                     </button>
@@ -434,10 +448,10 @@ const GestionIngresos = ({ user }: any) => {
                             </button>
                             <button
                                 onClick={() => setPreviewFile(null)}
-                                style={{ background: 'rgba(255,255,255,0.2)', color: 'white', border: 'none', borderRadius: '12px', padding: '10px 16px', cursor: 'pointer', fontSize: '20px' }}
+                                style={{ background: 'rgba(255,255,255,0.2)', color: 'white', border: 'none', borderRadius: '12px', padding: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                                 title="Cerrar"
                             >
-                                ✕
+                                <X size={20} />
                             </button>
                         </div>
 

@@ -50,7 +50,7 @@ const ControlDeudas = () => {
     const [convertirPdf, setConvertirPdf] = useState(false);
     const [errores, setErrores] = useState<string[]>([]);
     const [enviando, setEnviando] = useState(false);
-    const [previewFile, setPreviewFile] = useState<{ url: string; isPdf: boolean } | null>(null);
+    const [previewFile, setPreviewFile] = useState<{ url: string; type: 'image' | 'pdf' } | null>(null);
 
     // Sharing State
     const [deudaACompartir, setDeudaACompartir] = useState<any | null>(null);
@@ -920,7 +920,7 @@ const ControlDeudas = () => {
                                                 onClick={() => {
                                                     const fullUrl = `https://yupaibsqnxfismckuqje.supabase.co/storage/v1/object/public/comprobantes/${d.comprobante_url}`;
                                                     const isPdf = d.comprobante_url.toLowerCase().endsWith('.pdf');
-                                                    setPreviewFile({ url: fullUrl, isPdf });
+                                                    setPreviewFile({ url: fullUrl, type: isPdf ? 'pdf' : 'image' });
                                                 }}
                                                 style={{ background: 'rgba(59, 130, 246, 0.1)', border: 'none', color: '#3B82F6', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '30px', height: '30px', borderRadius: '8px' }}
                                                 title="Ver factura"
@@ -1016,7 +1016,7 @@ const ControlDeudas = () => {
                     >
                         <div style={{ position: 'absolute', top: '-50px', right: 0, display: 'flex', gap: '12px' }}>
                             <button
-                                onClick={() => previewFile && handleDownload(previewFile.url, previewFile.isPdf)}
+                                onClick={() => previewFile && handleDownload(previewFile.url, previewFile.type === 'pdf')}
                                 style={{
                                     background: 'var(--primary)',
                                     color: 'white',
@@ -1052,18 +1052,18 @@ const ControlDeudas = () => {
                                 <X size={20} />
                             </button>
                         </div>
-                        {previewFile.isPdf ? (
-                            <iframe
-                                src={previewFile.url}
-                                style={{
-                                    width: '800px',
-                                    maxWidth: '100%',
-                                    height: '80vh',
-                                    borderRadius: '12px',
-                                    border: 'none'
-                                }}
-                                title="Vista Previa PDF"
-                            />
+                        {previewFile.type === 'pdf' ? (
+                            <div style={{ width: '90vw', maxWidth: '800px', height: '80vh', background: 'white', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.2)' }}>
+                                <iframe
+                                    src={previewFile.url}
+                                    style={{
+                                        width: '100%',
+                                        height: '100%',
+                                        border: 'none'
+                                    }}
+                                    title="Vista Previa PDF"
+                                />
+                            </div>
                         ) : (
                             <img
                                 src={previewFile.url}
@@ -1331,7 +1331,7 @@ const ControlDeudas = () => {
                                                     onClick={() => {
                                                         const fullUrl = `https://yupaibsqnxfismckuqje.supabase.co/storage/v1/object/public/comprobantes/${a.comprobante_url}`;
                                                         const isPdf = a.comprobante_url.toLowerCase().endsWith('.pdf');
-                                                        setPreviewFile({ url: fullUrl, isPdf });
+                                                        setPreviewFile({ url: fullUrl, type: isPdf ? 'pdf' : 'image' });
                                                     }}
                                                     style={{ background: 'none', border: 'none', color: 'var(--text-muted)', padding: '6px', cursor: 'pointer', outline: 'none' }}
                                                 >
