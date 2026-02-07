@@ -278,13 +278,34 @@ button {
   border-radius: 10px;
 }
 
-.loading-spinner {
-  width: 24px;
-  height: 24px;
-  border: 3px solid var(--border);
-  border-top-color: var(--primary);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
+/* Estilos para el Logo Premium Nexus */
+.nexus-logo-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.nexus-logo-container:hover {
+  transform: scale(1.1) rotate(5deg);
+}
+
+.nexus-logo-svg {
+  filter: drop-shadow(0 0 8px rgba(16, 185, 129, 0.4));
+  animation: logoPulse 4s infinite ease-in-out;
+}
+
+@keyframes logoPulse {
+  0%, 100% { 
+    filter: drop-shadow(0 0 6px rgba(16, 185, 129, 0.3));
+    transform: scale(1);
+  }
+  50% { 
+    filter: drop-shadow(0 0 15px rgba(16, 185, 129, 0.6));
+    transform: scale(1.05);
+  }
 }
 
 @keyframes spin {

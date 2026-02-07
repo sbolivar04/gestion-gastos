@@ -63,11 +63,21 @@ const App = () => {
     <div className="app-shell">
       <header className="header">
         <div className="container" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div style={{ width: '32px', height: '32px', background: 'var(--primary)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
-              <Wallet size={18} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div className="nexus-logo-container">
+              <svg viewBox="0 0 100 100" className="nexus-logo-svg" width="34" height="34">
+                <defs>
+                  <linearGradient id="logo-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" style={{ stopColor: '#10B981', stopOpacity: 1 }} />
+                    <stop offset="100%" style={{ stopColor: '#059669', stopOpacity: 1 }} />
+                  </linearGradient>
+                </defs>
+                <path d="M50 15 L85 50 L50 85 L15 50 Z" fill="none" stroke="url(#logo-grad)" strokeWidth="8" strokeLinejoin="round" />
+                <path d="M50 35 L65 50 L50 65 L35 50 Z" fill="url(#logo-grad)" />
+                <circle cx="50" cy="50" r="5" fill="white" opacity="0.8" />
+              </svg>
             </div>
-            <h1 style={{ fontSize: '18px', fontWeight: '800', letterSpacing: '-0.02em' }}>Gestión Gastos</h1>
+            <h1 style={{ fontSize: '20px', fontWeight: '900', letterSpacing: '-0.04em', fontFamily: 'Outfit, sans-serif' }}>Gestión Gastos</h1>
           </div>
           <div style={{ display: 'flex', gap: '12px' }}>
             <button
