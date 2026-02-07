@@ -46,7 +46,7 @@ const Dashboard = ({ user }: any) => {
     });
     const [gastosRecientes, setGastosRecientes] = useState<any[]>([]);
     const [categoriasSummary, setCategoriasSummary] = useState<any[]>([]);
-    const [deudasProximas, setDeudasProximas] = useState<any[]>([]);
+    // const [deudasProximas, setDeudasProximas] = useState<any[]>([]);
     const [fuentesDetalle, setFuentesDetalle] = useState<any[]>([]);
     const [fuentesExpandidas, setFuentesExpandidas] = useState<string[]>([]);
     const [loading, setLoading] = useState(true);
@@ -215,10 +215,10 @@ const Dashboard = ({ user }: any) => {
         const totalAnterior = gastosAnteriores?.reduce((acc, g) => acc + Number(g.monto), 0) || 0;
         const totalDeudas = deudas?.reduce((acc, d) => acc + (Number(d.monto_total) - Number(d.monto_pagado)), 0) || 0;
 
-        const hoyStr = new Date().toISOString().split('T')[0];
-        const sieteDiasStr = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
-        const proximas = deudas?.filter(d => d.fecha_limite && d.fecha_limite >= hoyStr && d.fecha_limite <= sieteDiasStr)
-            .sort((a, b) => a.fecha_limite.localeCompare(b.fecha_limite)) || [];
+        // const hoyStr = new Date().toISOString().split('T')[0];
+        // const sieteDiasStr = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
+        /* const proximas = deudas?.filter(d => d.fecha_limite && d.fecha_limite >= hoyStr && d.fecha_limite <= sieteDiasStr)
+            .sort((a, b) => a.fecha_limite.localeCompare(b.fecha_limite)) || []; */
 
         const catMap = new Map();
         gastosMes?.forEach(g => {
@@ -287,7 +287,7 @@ const Dashboard = ({ user }: any) => {
         }
 
         setFuentesDetalle(detalle);
-        setDeudasProximas(proximas);
+        // setDeudasProximas(proximas);
         setLoading(false);
     };
 
