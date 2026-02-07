@@ -13,6 +13,7 @@ import {
     ChevronUp
 } from 'lucide-react';
 import { formatearFecha, getISODateLocal } from '../utilidades/fechas';
+import { formatearNombreMostrar } from '../utilidades/formato';
 
 type Granularidad = 'dia' | 'semana' | 'mes' | 'año' | 'periodo';
 
@@ -35,7 +36,7 @@ const Skeleton = ({ width, height, borderRadius = '12px' }: { width?: string, he
     </div>
 );
 
-const Dashboard = ({ user }: any) => {
+const Dashboard = ({ user, perfil }: any) => {
     const [stats, setStats] = useState({
         totalGastado: 0,
         deudasPendientes: 0,
@@ -312,7 +313,7 @@ const Dashboard = ({ user }: any) => {
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', paddingBottom: '40px' }}>
             <div>
-                <h2 style={{ fontSize: '24px', fontWeight: '800' }}>Hola, {user?.user_metadata?.nombre_completo?.split(' ')[0] || user?.email?.split('@')[0]} 👋</h2>
+                <h2 style={{ fontSize: '24px', fontWeight: '800' }}>Hola, {formatearNombreMostrar(perfil?.nombre_completo || user?.email?.split('@')[0])} 👋</h2>
                 <p style={{ color: 'var(--text-muted)', fontSize: '14px' }}>Resumen de tus finanzas</p>
             </div>
 

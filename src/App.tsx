@@ -4,9 +4,7 @@ import {
   LayoutDashboard,
   History,
   Wallet,
-  LogOut,
-  Moon,
-  Sun
+  PiggyBank
 } from 'lucide-react';
 import './index.css';
 
@@ -16,26 +14,72 @@ import Dashboard from './vistas/Dashboard';
 import HistoricoGastos from './vistas/HistoricoGastos';
 import ControlDeudas from './vistas/ControlDeudas';
 import GestionIngresos from './vistas/GestionIngresos';
-import { PiggyBank } from 'lucide-react';
+import MenuUsuario from './componentes/MenuUsuario';
 
 const App = () => {
   const [user, setUser] = useState<any>(null);
+  const [perfil, setPerfil] = useState<any>(null);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  const fetchPerfil = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('perfiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+      if (error) throw error;
+      setPerfil(data);
+    } catch (err) {
+      console.error('Error cargando perfil:', err);
+    }
+  };
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
+      if (currentUser) fetchPerfil(currentUser.id);
       setLoading(false);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
+      if (currentUser) fetchPerfil(currentUser.id);
+      else setPerfil(null);
     });
 
     return () => subscription.unsubscribe();
   }, []);
+
+  // Suscripción en tiempo real para el perfil
+  useEffect(() => {
+    if (!user) return;
+
+    const channel = supabase
+      .channel(`perfil_cambios_${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'perfiles',
+          filter: `id=eq.${user.id}`
+        },
+        (payload) => {
+          setPerfil(payload.new);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user]);
 
   useEffect(() => {
     if (isDarkMode) {
@@ -61,45 +105,28 @@ const App = () => {
 
   return (
     <div className="app-shell">
-      <header className="header">
-        <div className="container" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div className="nexus-logo-container">
-              <svg viewBox="0 0 100 100" className="nexus-logo-svg" width="34" height="34">
-                <defs>
-                  <linearGradient id="logo-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" style={{ stopColor: '#10B981', stopOpacity: 1 }} />
-                    <stop offset="100%" style={{ stopColor: '#059669', stopOpacity: 1 }} />
-                  </linearGradient>
-                </defs>
-                <path d="M50 15 L85 50 L50 85 L15 50 Z" fill="none" stroke="url(#logo-grad)" strokeWidth="8" strokeLinejoin="round" />
-                <path d="M50 35 L65 50 L50 65 L35 50 Z" fill="url(#logo-grad)" />
-                <circle cx="50" cy="50" r="5" fill="white" opacity="0.8" />
-              </svg>
+      <header className="header" style={{ position: 'sticky', top: 0, zIndex: 100, background: 'var(--card)', borderBottom: '1px solid var(--border)' }}>
+        <div className="container" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ width: '32px', height: '32px', background: 'var(--primary)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
+              <Wallet size={18} />
             </div>
-            <h1 style={{ fontSize: '20px', fontWeight: '900', letterSpacing: '-0.04em', fontFamily: 'Outfit, sans-serif' }}>Gestión Gastos</h1>
+            <h1 style={{ fontSize: '18px', fontWeight: '800', letterSpacing: '-0.02em', color: 'var(--text)' }}>Gestión Gastos</h1>
           </div>
-          <div style={{ display: 'flex', gap: '12px' }}>
-            <button
-              onClick={() => setIsDarkMode(!isDarkMode)}
-              style={{ padding: '8px', color: 'var(--text-muted)' }}
-            >
-              {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
-            </button>
-            <button
-              onClick={handleLogout}
-              style={{ padding: '8px', color: 'var(--danger)' }}
-              title="Cerrar Sesión"
-            >
-              <LogOut size={20} />
-            </button>
-          </div>
+
+          <MenuUsuario
+            user={user}
+            perfil={perfil}
+            isDarkMode={isDarkMode}
+            onToggleTheme={() => setIsDarkMode(!isDarkMode)}
+            onLogout={handleLogout}
+          />
         </div>
       </header>
 
       <main className="main-content">
         <div className="container">
-          {activeTab === 'dashboard' && <Dashboard user={user} />}
+          {activeTab === 'dashboard' && <Dashboard user={user} perfil={perfil} />}
           {activeTab === 'gastos' && <HistoricoGastos />}
           {activeTab === 'deudas' && <ControlDeudas />}
           {activeTab === 'presupuesto' && <GestionIngresos user={user} />}
