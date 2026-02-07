@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Tag, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface SelectorFiltroCategoriaProps {
@@ -7,7 +7,7 @@ interface SelectorFiltroCategoriaProps {
     onChange: (value: string) => void;
 }
 
-const SelectorFiltroCategoria: React.FC<SelectorFiltroCategoriaProps> = ({ categorias, value, onChange }) => {
+const SelectorFiltroCategoria = ({ categorias, value, onChange }: SelectorFiltroCategoriaProps) => {
     const [isOpen, setIsOpen] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
 

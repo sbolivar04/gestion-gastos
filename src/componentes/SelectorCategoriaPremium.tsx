@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
     ChevronDown,
     ChevronUp,
@@ -38,13 +38,13 @@ const SelectorCategoriaPremium = ({
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    const handleEditClick = (e: React.MouseEvent, c: any) => {
+    const handleEditClick = (e: any, c: any) => {
         e.stopPropagation();
         setEditingId(c.id);
         setEditingName(c.nombre);
     };
 
-    const handleSaveEdit = (e: React.MouseEvent) => {
+    const handleSaveEdit = (e: any) => {
         e.stopPropagation();
         if (editingId && editingName.trim()) {
             onEdit(editingId, editingName.trim());
@@ -52,7 +52,7 @@ const SelectorCategoriaPremium = ({
         }
     };
 
-    const handleCancelEdit = (e: React.MouseEvent) => {
+    const handleCancelEdit = (e: any) => {
         e.stopPropagation();
         setEditingId(null);
     };
