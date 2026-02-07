@@ -812,7 +812,11 @@ const HistoricoGastos = () => {
                                 <img src={previewFile.url} alt="Comprobante" style={{ maxWidth: '100%', maxHeight: '80vh', borderRadius: '12px', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.2)' }} />
                             ) : (
                                 <div style={{ width: '90vw', maxWidth: '800px', height: '80vh', background: 'white', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.2)' }}>
-                                    <iframe src={previewFile.url} style={{ width: '100%', height: '100%', border: 'none' }} title="Vista previa PDF" />
+                                    <iframe
+                                        src={`https://docs.google.com/viewer?url=${encodeURIComponent(previewFile.url)}&embedded=true`}
+                                        style={{ width: '100%', height: '100%', border: 'none' }}
+                                        title="Vista previa PDF"
+                                    />
                                 </div>
                             )}
                         </div>
