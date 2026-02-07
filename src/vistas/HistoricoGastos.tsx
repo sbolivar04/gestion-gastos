@@ -318,13 +318,36 @@ const HistoricoGastos = () => {
         if (archivo && convertirPdf && archivo.type.startsWith('image/')) {
             try {
                 const { jsPDF } = await import('jspdf');
-                const doc = new jsPDF();
-                const img = await new Promise<string>((resolve) => {
+
+                // Obtener datos de la imagen y sus dimensiones reales
+                const imageData = await new Promise<string>((resolve) => {
                     const reader = new FileReader();
                     reader.onload = (ev) => resolve(ev.target?.result as string);
                     reader.readAsDataURL(archivo);
                 });
-                doc.addImage(img, 'JPEG', 10, 10, 190, 0);
+
+                const img = new Image();
+                await new Promise((resolve) => {
+                    img.onload = resolve;
+                    img.src = imageData;
+                });
+
+                const rawWidth = img.width;
+                const rawHeight = img.height;
+
+                // Definimos un ancho estándar en mm (por ejemplo, el ancho de un A4 menos márgenes)
+                const pdfWidth = 190;
+                // Calculamos el alto proporcional en mm
+                const pdfHeight = (rawHeight * pdfWidth) / rawWidth;
+
+                // Creamos el PDF con el tamaño exacto necesario para la imagen (más márgenes de 10mm por lado)
+                const doc = new jsPDF({
+                    orientation: pdfWidth > pdfHeight ? 'landscape' : 'portrait',
+                    unit: 'mm',
+                    format: [pdfWidth + 20, pdfHeight + 20]
+                });
+
+                doc.addImage(imageData, 'JPEG', 10, 10, pdfWidth, pdfHeight);
                 const blob = doc.output('blob');
                 finalFile = new File([blob], archivo.name.replace(/\.[^/.]+$/, "") + ".pdf", { type: 'application/pdf' });
             } catch (err) {
@@ -812,11 +835,7 @@ const HistoricoGastos = () => {
                                 <img src={previewFile.url} alt="Comprobante" style={{ maxWidth: '100%', maxHeight: '80vh', borderRadius: '12px', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.2)' }} />
                             ) : (
                                 <div style={{ width: '90vw', maxWidth: '800px', height: '80vh', background: 'white', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.2)' }}>
-                                    <iframe
-                                        src={`https://docs.google.com/viewer?url=${encodeURIComponent(previewFile.url)}&embedded=true`}
-                                        style={{ width: '100%', height: '100%', border: 'none' }}
-                                        title="Vista previa PDF"
-                                    />
+                                    <iframe src={previewFile.url} style={{ width: '100%', height: '100%', border: 'none' }} title="Vista previa PDF" />
                                 </div>
                             )}
                         </div>

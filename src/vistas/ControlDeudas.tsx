@@ -229,12 +229,48 @@ const ControlDeudas = () => {
 
         try {
             let comprobantePath = null;
-            if (archivo) {
-                const fileExt = archivo.name.split('.').pop();
-                const fileName = `${Math.random()}.${fileExt}`;
+            let finalFile: any = archivo;
+
+            if (archivo && convertirPdf && archivo.type.startsWith('image/')) {
+                try {
+                    const { jsPDF } = await import('jspdf');
+
+                    const imageData = await new Promise<string>((resolve) => {
+                        const reader = new FileReader();
+                        reader.onload = (ev) => resolve(ev.target?.result as string);
+                        reader.readAsDataURL(archivo);
+                    });
+
+                    const img = new Image();
+                    await new Promise((resolve) => {
+                        img.onload = resolve;
+                        img.src = imageData;
+                    });
+
+                    const rawWidth = img.width;
+                    const rawHeight = img.height;
+                    const pdfWidth = 190;
+                    const pdfHeight = (rawHeight * pdfWidth) / rawWidth;
+
+                    const doc = new jsPDF({
+                        orientation: pdfWidth > pdfHeight ? 'landscape' : 'portrait',
+                        unit: 'mm',
+                        format: [pdfWidth + 20, pdfHeight + 20]
+                    });
+
+                    doc.addImage(imageData, 'JPEG', 10, 10, pdfWidth, pdfHeight);
+                    const blob = doc.output('blob');
+                    finalFile = new File([blob], archivo.name.replace(/\.[^/.]+$/, "") + ".pdf", { type: 'application/pdf' });
+                } catch (err) {
+                    console.error("Error convirtiendo a PDF:", err);
+                }
+            }
+
+            if (finalFile) {
+                const fileName = `abonos/${Date.now()}-${finalFile.name}`;
                 const { error: uploadError } = await supabase.storage
                     .from('comprobantes')
-                    .upload(fileName, archivo);
+                    .upload(fileName, finalFile);
 
                 if (uploadError) throw uploadError;
                 comprobantePath = fileName;
@@ -394,13 +430,36 @@ const ControlDeudas = () => {
         if (archivo && convertirPdf && archivo.type.startsWith('image/')) {
             try {
                 const { jsPDF } = await import('jspdf');
-                const doc = new jsPDF();
-                const img = await new Promise<string>((resolve) => {
+
+                // Obtener datos de la imagen y sus dimensiones reales
+                const imageData = await new Promise<string>((resolve) => {
                     const reader = new FileReader();
                     reader.onload = (ev) => resolve(ev.target?.result as string);
                     reader.readAsDataURL(archivo);
                 });
-                doc.addImage(img, 'JPEG', 10, 10, 190, 0);
+
+                const img = new Image();
+                await new Promise((resolve) => {
+                    img.onload = resolve;
+                    img.src = imageData;
+                });
+
+                const rawWidth = img.width;
+                const rawHeight = img.height;
+
+                // Definimos un ancho estándar en mm (por ejemplo, el ancho de un A4 menos márgenes)
+                const pdfWidth = 190;
+                // Calculamos el alto proporcional en mm
+                const pdfHeight = (rawHeight * pdfWidth) / rawWidth;
+
+                // Creamos el PDF con el tamaño exacto necesario para la imagen (más márgenes de 10mm por lado)
+                const doc = new jsPDF({
+                    orientation: pdfWidth > pdfHeight ? 'landscape' : 'portrait',
+                    unit: 'mm',
+                    format: [pdfWidth + 20, pdfHeight + 20]
+                });
+
+                doc.addImage(imageData, 'JPEG', 10, 10, pdfWidth, pdfHeight);
                 const blob = doc.output('blob');
                 finalFile = new File([blob], archivo.name.replace(/\.[^/.]+$/, "") + ".pdf", { type: 'application/pdf' });
             } catch (err) {
@@ -1218,6 +1277,18 @@ const ControlDeudas = () => {
                                             {(archivo as any)?.name || 'Subir Comprobante (Obligatorio)'}
                                         </p>
                                     </div>
+
+                                    {archivo && archivo.type.startsWith('image/') && (
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'var(--bg)', padding: '12px', borderRadius: '12px' }}>
+                                            <input
+                                                type="checkbox"
+                                                checked={convertirPdf}
+                                                onChange={e => setConvertirPdf(e.target.checked)}
+                                                style={{ width: '20px', height: '20px', cursor: 'pointer' }}
+                                            />
+                                            <span style={{ fontSize: '14px' }}>¿Convertir imagen a PDF?</span>
+                                        </div>
+                                    )}
 
                                     <button
                                         onClick={handleRegistrarAbono}
