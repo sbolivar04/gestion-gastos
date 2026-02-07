@@ -13,6 +13,9 @@
   },
   "homepage": "https://sbolivar04.github.io/gestion-gastos/",
   "dependencies": {
+    "@capacitor/android": "^8.0.2",
+    "@capacitor/cli": "^8.0.2",
+    "@capacitor/core": "^8.0.2",
     "@supabase/supabase-js": "^2.93.3",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.1.0",

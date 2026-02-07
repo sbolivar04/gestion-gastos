@@ -396,6 +396,20 @@ button {
   transform: rotate(180deg);
 }
 
+/* Responsividad para Menú de Usuario */
+@media (max-width: 500px) {
+
+  .user-profile-trigger .user-info,
+  .user-profile-trigger .chevron {
+    display: none;
+  }
+
+  .user-profile-trigger {
+    padding: 0;
+    gap: 0;
+  }
+}
+
 .user-dropdown-menu {
   position: absolute;
   top: calc(100% + 8px);

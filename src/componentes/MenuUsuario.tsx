@@ -45,6 +45,24 @@ const MenuUsuario = ({ user, perfil, isDarkMode, onToggleTheme, onLogout }: Menu
     const [isEditingName, setIsEditingName] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
     const [isChangingPassword, setIsChangingPassword] = useState(false);
+    const [avatarColor, setAvatarColor] = useState({ bg: '#fef08a', text: '#854d0e' });
+
+    // Colores premium para el avatar
+    const AVATAR_COLORS = [
+        { bg: '#fef08a', text: '#854d0e' }, // Amarillo
+        { bg: '#d1fae5', text: '#065f46' }, // Esmeralda
+        { bg: '#e0e7ff', text: '#3730a3' }, // Indigo
+        { bg: '#ffe4e6', text: '#9f1239' }, // Rosa
+        { bg: '#dbeafe', text: '#1e40af' }, // Azul
+        { bg: '#f3e8ff', text: '#6b21a8' }, // Morado
+        { bg: '#ffedd5', text: '#9a3412' }  // Naranja
+    ];
+
+    useEffect(() => {
+        // Elegir un color aleatorio al montar (cada sesión)
+        const randomColor = AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
+        setAvatarColor(randomColor);
+    }, []);
 
     useEffect(() => {
         if (perfil?.nombre_completo) {
@@ -140,7 +158,7 @@ const MenuUsuario = ({ user, perfil, isDarkMode, onToggleTheme, onLogout }: Menu
                 style={{ padding: '4px' }}
                 title="Menú de usuario"
             >
-                <div className="avatar">
+                <div className="avatar" style={{ backgroundColor: avatarColor.bg, color: avatarColor.text }}>
                     {userInitial}
                 </div>
                 <div className="user-info">

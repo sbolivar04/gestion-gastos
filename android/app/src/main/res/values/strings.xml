@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Nexus Gestion</string>
+    <string name="title_activity_main">Nexus Gestion</string>
+    <string name="package_name">com.nexus.gestiongastos</string>
+    <string name="custom_url_scheme">com.nexus.gestiongastos</string>
+</resources>

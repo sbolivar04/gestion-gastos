@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { supabase } from '../lib/supabase';
-// Eliminado Receipt
-
+import { Receipt } from 'lucide-react';
 
 const LoginForm = () => {
     const [username, setUsername] = useState('');
@@ -22,8 +21,8 @@ const LoginForm = () => {
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', padding: '24px', background: 'var(--bg)' }}>
             <div className="card fade-in" style={{ width: '100%', maxWidth: '360px', padding: '32px' }}>
                 <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-                    <div style={{ width: '64px', height: '64px', background: 'white', borderRadius: '24px', margin: '0 auto 20px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 16px rgba(0, 0, 0, 0.08)', padding: '12px' }}>
-                        <img src="/logo-nexus.svg" alt="Nexus Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                    <div style={{ width: '64px', height: '64px', background: 'var(--primary)', borderRadius: '24px', margin: '0 auto 20px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', boxShadow: '0 8px 16px rgba(16, 185, 129, 0.2)' }}>
+                        <Receipt size={32} />
                     </div>
                     <h2 style={{ fontSize: '24px', fontWeight: '800' }}>Bienvenido</h2>
                     <p style={{ color: 'var(--text-muted)', fontSize: '14px' }}>Controla tus gastos con facilidad</p>
