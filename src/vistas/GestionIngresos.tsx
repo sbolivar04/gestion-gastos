@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import {
     Plus,
@@ -66,7 +66,6 @@ const GestionIngresos = ({ user }: any) => {
             .eq('año', anio);
 
         // 2. Obtener Gastos del mes para el desglose (incluyendo categoría)
-        // Calculamos el rango exacto del mes seleccionado para no fallar con meses de 28, 30 o 31 días
         const primerDia = new Date(anio, mes - 1, 1);
         const ultimoDia = new Date(anio, mes, 0);
 
@@ -82,22 +81,46 @@ const GestionIngresos = ({ user }: any) => {
         setLoading(false);
     };
 
-    const handleDownload = async () => {
-        if (!previewFile) return;
+    // Referencia para mantener la función actualizada en el closure del subscription
+    const fetchFuentesRef = useRef(fetchFuentes);
+    useEffect(() => {
+        fetchFuentesRef.current = fetchFuentes;
+    });
+
+    useEffect(() => {
+        const channel = supabase
+            .channel('ingresos_realtime')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'ingresos_fuentes' }, () => {
+                fetchFuentesRef.current();
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'gastos' }, () => {
+                fetchFuentesRef.current();
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, []);
+
+    const handleDownload = async (url: string = '', isPdfStr: boolean = false) => {
+        const downloadUrl = url || previewFile?.url;
+        const isPdfType = isPdfStr || previewFile?.type === 'pdf';
+        if (!downloadUrl) return;
         try {
-            const response = await fetch(previewFile.url);
+            const response = await fetch(downloadUrl);
             const blob = await response.blob();
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `comprobante-${Date.now()}.${previewFile.type === 'pdf' ? 'pdf' : 'jpg'}`;
-            document.body.appendChild(a);
-            a.click();
-            window.URL.revokeObjectURL(url);
-            document.body.removeChild(a);
-        } catch (error) {
-            console.error('Error al descargar:', error);
-            window.open(previewFile.url, '_blank');
+            const bUrl = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = bUrl;
+            link.download = `comprobante-${Date.now()}.${isPdfType ? 'pdf' : 'jpg'}`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(bUrl);
+        } catch (e) {
+            console.error("Error downloading:", e);
+            window.open(downloadUrl, '_blank');
         }
     };
 
@@ -440,7 +463,7 @@ const GestionIngresos = ({ user }: any) => {
                     <div className="fade-in" style={{ position: 'relative', width: 'auto', maxWidth: '100%', maxHeight: '90vh', display: 'flex', flexDirection: 'column', alignItems: 'center' }} onClick={e => e.stopPropagation()}>
                         <div style={{ position: 'absolute', top: '-50px', right: 0, display: 'flex', gap: '12px' }}>
                             <button
-                                onClick={handleDownload}
+                                onClick={() => previewFile && handleDownload(previewFile.url, previewFile.type === 'pdf')}
                                 style={{ background: 'var(--primary)', color: 'white', border: 'none', borderRadius: '12px', padding: '10px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', fontWeight: '600' }}
                                 title="Descargar"
                             >
@@ -455,12 +478,12 @@ const GestionIngresos = ({ user }: any) => {
                             </button>
                         </div>
 
-                        {previewFile.type === 'image' ? (
-                            <img src={previewFile.url} alt="Comprobante" style={{ maxWidth: '100%', maxHeight: '80vh', borderRadius: '12px', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.2)' }} />
-                        ) : (
+                        {previewFile.type === 'pdf' ? (
                             <div style={{ width: '90vw', maxWidth: '800px', height: '80vh', background: 'white', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.2)' }}>
-                                <iframe src={previewFile.url} style={{ width: '100%', height: '100%', border: 'none' }} title="Vista previa PDF" />
+                                <iframe src={`https://docs.google.com/viewer?url=${encodeURIComponent(previewFile.url)}&embedded=true`} style={{ width: '100%', height: '100%', border: 'none' }} title="Vista Previa PDF" />
                             </div>
+                        ) : (
+                            <img src={previewFile.url} alt="Comprobante" style={{ maxWidth: '100%', maxHeight: '80vh', borderRadius: '12px', boxShadow: '0 20px 60px rgba(0,0,0,0.5)' }} />
                         )}
                     </div>
                 </div>

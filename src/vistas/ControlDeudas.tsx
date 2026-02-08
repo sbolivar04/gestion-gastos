@@ -12,22 +12,14 @@ import {
     AlertTriangle,
     X,
     Search,
-    ChevronLeft,
-    ChevronRight,
+    User,
 } from 'lucide-react';
 
-type Granularidad = 'dia' | 'semana' | 'mes' | 'año' | 'periodo';
-
-const PERIODOS: { id: Granularidad; label: string }[] = [
-    { id: 'dia', label: 'Día' },
-    { id: 'semana', label: 'Semana' },
-    { id: 'mes', label: 'Mes' },
-    { id: 'año', label: 'Año' },
-    { id: 'periodo', label: 'Periodo' },
-];
 import CalendarioPremium from '../componentes/CalendarioPremium';
-import { getHoyColombia, formatearFecha, getStartEnd, formatRango } from '../utilidades/fechas';
+import { getHoyColombia, formatearFecha } from '../utilidades/fechas';
+import { formatearNombreMostrar } from '../utilidades/formato';
 import BannerAlerta from '../componentes/BannerAlerta';
+import FiltroRangoFechas from '../componentes/FiltroRangoFechas';
 
 const nombresCampos: Record<string, string> = {
     titulo: 'Título',
@@ -75,35 +67,15 @@ const ControlDeudas = () => {
     const [filtroTexto, setFiltroTexto] = useState('');
     const [filtroEstado, setFiltroEstado] = useState<'todas' | 'pendientes' | 'pagadas'>('todas');
 
-    // Estados para navegación de fechas
-    const [granularidad, setGranularidad] = useState<Granularidad>('mes');
-    const [fechaNavegacion, setFechaNavegacion] = useState<Date>(new Date());
-    const [fechaDesde, setFechaDesde] = useState<string>('');
-    const [fechaHasta, setFechaHasta] = useState<string>('');
-    const [mostrarCalDesde, setMostrarCalDesde] = useState(false);
-    const [mostrarCalHasta, setMostrarCalHasta] = useState(false);
+    // Estado consolidado de rango de fechas
+    const [rangoSeleccionado, setRangoSeleccionado] = useState<any>(null);
 
     // Estados para paginación
     const [page, setPage] = useState(0);
     const [hasMore, setHasMore] = useState(true);
     const PAGE_SIZE = 5;
 
-    // Funciones auxiliares para fechas
-    const navegarFecha = (direccion: number) => {
-        const nuevaFecha = new Date(fechaNavegacion);
-        switch (granularidad) {
-            case 'dia': nuevaFecha.setDate(nuevaFecha.getDate() + direccion); break;
-            case 'semana': nuevaFecha.setDate(nuevaFecha.getDate() + (direccion * 7)); break;
-            case 'mes': nuevaFecha.setMonth(nuevaFecha.getMonth() + direccion); break;
-            case 'año': nuevaFecha.setFullYear(nuevaFecha.getFullYear() + direccion); break;
-        }
-        setFechaNavegacion(nuevaFecha);
-    };
 
-    const getRangoTitulo = () => {
-        if (granularidad === 'periodo') return 'Histórico Completo';
-        return formatRango(fechaNavegacion, granularidad);
-    };
 
     useEffect(() => {
         const init = async () => {
@@ -114,12 +86,12 @@ const ControlDeudas = () => {
     }, []);
 
     useEffect(() => {
-        if (!userLogueado) return;
+        if (!userLogueado || !rangoSeleccionado) return;
         const delayDebounce = setTimeout(() => {
             fetchDeudas(true);
         }, filtroTexto ? 400 : 0);
         return () => clearTimeout(delayDebounce);
-    }, [filtroTexto, filtroEstado, granularidad, fechaNavegacion, fechaDesde, fechaHasta, userLogueado]);
+    }, [filtroTexto, filtroEstado, rangoSeleccionado, userLogueado]);
 
     useEffect(() => {
         if (errores.length > 0) {
@@ -173,7 +145,7 @@ const ControlDeudas = () => {
             // Marcar deuda como compartida si se añadió el primer participante
             await supabase.from('deudas').update({ es_compartida: true }).eq('id', deudaACompartir.id);
             await fetchParticipantes(deudaACompartir.id);
-            await fetchDeudas();
+            await fetchDeudas(true);
             setQueryUsuario('');
             setUsuariosSugeridos([]);
         }
@@ -193,7 +165,7 @@ const ControlDeudas = () => {
             if (!restantes || restantes.length === 0) {
                 await supabase.from('deudas').update({ es_compartida: false }).eq('id', deudaACompartir.id);
             }
-            await fetchDeudas();
+            await fetchDeudas(true);
         }
     };
 
@@ -358,13 +330,8 @@ const ControlDeudas = () => {
         if (filtroEstado === 'pagadas') query = query.eq('estado', 'pagada');
         if (filtroEstado === 'pendientes') query = query.neq('estado', 'pagada');
 
-        if (granularidad !== 'periodo') {
-            const { start, end } = getStartEnd(fechaNavegacion, granularidad);
-            query = query.gte('creado_en', start.toISOString()).lte('creado_en', end.toISOString());
-        } else {
-            if (fechaDesde) query = query.gte('creado_en', new Date(fechaDesde).toISOString());
-            if (fechaHasta) query = query.lte('creado_en', new Date(fechaHasta).toISOString()); // Corrected to lte for fechaHasta
-        }
+        const { start, end } = rangoSeleccionado;
+        query = query.gte('creado_en', start.toISOString()).lte('creado_en', end.toISOString());
 
         const { data, count, error } = await query;
 
@@ -499,10 +466,42 @@ const ControlDeudas = () => {
 
     const handleEliminar = async () => {
         if (!deudaAEliminar) return;
-        const { error } = await supabase.from('deudas').delete().eq('id', deudaAEliminar.id);
-        if (!error) {
-            fetchDeudas(true);
-            setDeudaAEliminar(null);
+
+        try {
+            const archivosAEliminar: string[] = [];
+
+            if (deudaAEliminar.comprobante_url) {
+                archivosAEliminar.push(deudaAEliminar.comprobante_url);
+            }
+
+            const { data: abonosData } = await supabase
+                .from('abonos_deuda')
+                .select('comprobante_url')
+                .eq('id_deuda', deudaAEliminar.id);
+
+            if (abonosData) {
+                abonosData.forEach(a => {
+                    if (a.comprobante_url) archivosAEliminar.push(a.comprobante_url);
+                });
+            }
+
+            if (archivosAEliminar.length > 0) {
+                await supabase.storage
+                    .from('comprobantes')
+                    .remove(archivosAEliminar);
+            }
+
+            const { error } = await supabase.from('deudas').delete().eq('id', deudaAEliminar.id);
+
+            if (!error) {
+                fetchDeudas(true);
+                setDeudaAEliminar(null);
+            } else {
+                setErrorSistema("No se pudo eliminar la deuda por un error en la base de datos.");
+            }
+        } catch (error: any) {
+            console.error("Error al eliminar:", error);
+            setErrorSistema("Ocurrió un error inesperado.");
         }
     };
 
@@ -703,156 +702,58 @@ const ControlDeudas = () => {
             )}
 
             {/* Barra de Filtros (Buscador y Estados)  */}
-            {!loading && deudas.length > 0 && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '8px' }}>
-                    <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-                        {/* Buscador */}
-                        <div style={{ position: 'relative', flex: '2 1 200px' }}>
-                            <Search size={18} style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                            <input
-                                type="text"
-                                placeholder="Buscar deuda..."
-                                value={filtroTexto}
-                                onChange={(e) => setFiltroTexto(e.target.value)}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '8px' }}>
+                <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                    {/* Buscador */}
+                    <div style={{ position: 'relative', flex: '2 1 200px' }}>
+                        <Search size={18} style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                        <input
+                            type="text"
+                            placeholder="Buscar deuda..."
+                            value={filtroTexto}
+                            onChange={(e) => setFiltroTexto(e.target.value)}
+                            style={{
+                                width: '100%',
+                                padding: '12px 12px 12px 48px',
+                                borderRadius: '16px',
+                                border: '1.5px solid var(--border)',
+                                background: 'var(--card)',
+                                color: 'var(--text)',
+                                outline: 'none',
+                                fontSize: '14px',
+                                transition: 'all 0.2s'
+                            }}
+                        />
+                    </div>
+
+                    {/* Filtro Estado */}
+                    <div style={{ flex: '1 1 250px', display: 'flex', gap: '6px', background: 'var(--card)', padding: '4px', borderRadius: '16px', border: '1.5px solid var(--border)', userSelect: 'none' }}>
+                        {(['todas', 'pendientes', 'pagadas'] as const).map((estado) => (
+                            <button
+                                key={estado}
+                                onClick={() => setFiltroEstado(estado)}
                                 style={{
-                                    width: '100%',
-                                    padding: '12px 12px 12px 48px',
-                                    borderRadius: '16px',
-                                    border: '1.5px solid var(--border)',
-                                    background: 'var(--card)',
-                                    color: 'var(--text)',
-                                    outline: 'none',
-                                    fontSize: '14px',
+                                    padding: '10px 12px',
+                                    borderRadius: '12px',
+                                    border: 'none',
+                                    background: filtroEstado === estado ? 'var(--primary)' : 'transparent',
+                                    color: filtroEstado === estado ? 'white' : 'var(--text-muted)',
+                                    fontSize: '13px',
+                                    fontWeight: '600',
+                                    cursor: 'pointer',
+                                    textTransform: 'capitalize',
                                     transition: 'all 0.2s'
                                 }}
-                            />
-                        </div>
-
-                        {/* Filtro Estado */}
-                        <div style={{ flex: '1 1 250px', display: 'flex', gap: '6px', background: 'var(--card)', padding: '4px', borderRadius: '16px', border: '1.5px solid var(--border)', userSelect: 'none' }}>
-                            {(['todas', 'pendientes', 'pagadas'] as const).map((estado) => (
-                                <button
-                                    key={estado}
-                                    onClick={() => setFiltroEstado(estado)}
-                                    style={{
-                                        padding: '10px 12px',
-                                        borderRadius: '12px',
-                                        border: 'none',
-                                        background: filtroEstado === estado ? 'var(--primary)' : 'transparent',
-                                        color: filtroEstado === estado ? 'white' : 'var(--text-muted)',
-                                        fontSize: '13px',
-                                        fontWeight: '600',
-                                        cursor: 'pointer',
-                                        textTransform: 'capitalize',
-                                        transition: 'all 0.2s'
-                                    }}
-                                >
-                                    {estado}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* Navegador de Rango de Fecha */}
-                    <div className="card" style={{ padding: '0', overflow: 'hidden', marginBottom: '16px' }}>
-                        <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', overflowX: 'auto' }}>
-                            {PERIODOS.map(p => (
-                                <button
-                                    key={p.id}
-                                    onClick={() => setGranularidad(p.id)}
-                                    style={{
-                                        flex: 1, padding: '10px 6px', background: granularidad === p.id ? 'var(--bg)' : 'transparent',
-                                        border: 'none', borderBottom: granularidad === p.id ? '2px solid var(--primary)' : '2px solid transparent',
-                                        color: granularidad === p.id ? 'var(--primary)' : 'var(--text-muted)',
-                                        fontWeight: granularidad === p.id ? '700' : '500',
-                                        fontSize: '11px',
-                                        cursor: 'pointer',
-                                        whiteSpace: 'nowrap',
-                                        transition: 'all 0.2s'
-                                    }}
-                                >
-                                    {p.label}
-                                </button>
-                            ))}
-                        </div>
-
-                        {/* Navegador de Rango */}
-                        {granularidad !== 'periodo' && (
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', background: 'var(--card)', borderBottomLeftRadius: '16px', borderBottomRightRadius: '16px' }}>
-                                <button onClick={() => navegarFecha(-1)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}>
-                                    <ChevronLeft size={18} />
-                                </button>
-
-                                <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text)', textTransform: 'capitalize' }}>
-                                    {getRangoTitulo()}
-                                </span>
-
-                                <button onClick={() => navegarFecha(1)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}>
-                                    <ChevronRight size={18} />
-                                </button>
-                            </div>
-                        )}
-                        {granularidad === 'periodo' && (
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '10px 16px', background: 'var(--card)', borderBottomLeftRadius: '16px', borderBottomRightRadius: '16px' }}>
-                                {/* Selector Inicio */}
-                                <div style={{ position: 'relative' }}>
-                                    <button
-                                        onClick={() => setMostrarCalDesde(!mostrarCalDesde)}
-                                        onMouseDown={(e) => e.stopPropagation()}
-                                        style={{ background: 'var(--bg)', border: fechaDesde ? '1.5px solid var(--primary)' : '1px solid var(--border)', borderRadius: '10px', padding: '6px 10px', fontSize: '11px', color: 'var(--text)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
-                                    >
-                                        <Calendar size={14} style={{ color: 'var(--text-muted)' }} />
-                                        <span>{fechaDesde ? formatearFecha(fechaDesde) : 'Desde'}</span>
-                                    </button>
-                                    {mostrarCalDesde && (
-                                        <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: '8px', zIndex: 2000 }}>
-                                            <CalendarioPremium
-                                                selectedDate={fechaDesde || getHoyColombia()}
-                                                onSelect={(date) => { setFechaDesde(date); setMostrarCalDesde(false); }}
-                                                maxDate="2099-12-31"
-                                                onClose={() => setMostrarCalDesde(false)}
-                                            />
-                                        </div>
-                                    )}
-                                </div>
-
-                                <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>-</span>
-
-                                {/* Selector Fin */}
-                                <div style={{ position: 'relative' }}>
-                                    <button
-                                        onClick={() => setMostrarCalHasta(!mostrarCalHasta)}
-                                        onMouseDown={(e) => e.stopPropagation()}
-                                        style={{ background: 'var(--bg)', border: fechaHasta ? '1.5px solid var(--primary)' : '1px solid var(--border)', borderRadius: '10px', padding: '6px 10px', fontSize: '11px', color: 'var(--text)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
-                                    >
-                                        <Calendar size={14} style={{ color: 'var(--text-muted)' }} />
-                                        <span>{fechaHasta ? formatearFecha(fechaHasta) : 'Hasta'}</span>
-                                    </button>
-                                    {mostrarCalHasta && (
-                                        <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '8px', zIndex: 2000 }}>
-                                            <CalendarioPremium
-                                                selectedDate={fechaHasta || getHoyColombia()}
-                                                onSelect={(date) => { setFechaHasta(date); setMostrarCalHasta(false); }}
-                                                maxDate="2099-12-31"
-                                                onClose={() => setMostrarCalHasta(false)}
-                                            />
-                                        </div>
-                                    )}
-                                </div>
-
-                                {(fechaDesde || fechaHasta) && (
-                                    <button
-                                        onClick={() => { setFechaDesde(''); setFechaHasta(''); }}
-                                        style={{ background: 'none', border: 'none', color: 'var(--danger)', fontSize: '11px', cursor: 'pointer', marginLeft: '4px', fontWeight: '600' }}
-                                    >
-                                        Limpiar
-                                    </button>
-                                )}
-                            </div>
-                        )}
+                            >
+                                {estado}
+                            </button>
+                        ))}
                     </div>
                 </div>
-            )}
+
+                {/* Navegador de Rango de Fecha Centralizado */}
+                <FiltroRangoFechas onChange={setRangoSeleccionado} />
+            </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 {loading ? <p style={{ textAlign: 'center', color: 'var(--text-muted)' }}>Cargando...</p> :
@@ -895,16 +796,26 @@ const ControlDeudas = () => {
                                     );
                                 })()}
 
-                                <div style={{ flex: 1 }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        <p style={{ fontWeight: '700', fontSize: '16px', color: 'var(--text)' }}>{d.titulo}</p>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                        <p style={{
+                                            fontWeight: '700',
+                                            fontSize: '15px',
+                                            color: 'var(--text)',
+                                            whiteSpace: 'nowrap',
+                                            overflow: 'hidden',
+                                            textOverflow: 'ellipsis',
+                                            maxWidth: '100%'
+                                        }}>
+                                            {d.titulo}
+                                        </p>
                                         {d.es_compartida && (
-                                            <span style={{ fontSize: '10px', background: 'rgba(139, 92, 246, 0.1)', color: '#8B5CF6', padding: '2px 8px', borderRadius: '10px', fontWeight: '700' }}>
+                                            <span style={{ fontSize: '9px', background: 'rgba(139, 92, 246, 0.1)', color: '#8B5CF6', padding: '1px 6px', borderRadius: '8px', fontWeight: '700', whiteSpace: 'nowrap' }}>
                                                 Compartida
                                             </span>
                                         )}
                                     </div>
-                                    <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                                    <p style={{ fontSize: '12px', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                         {d.id_propietario !== userLogueado?.id && d.perfiles?.nombre_completo
                                             ? `Dueño: ${d.perfiles.nombre_completo}`
                                             : (d.descripcion || 'Sin descripción')}
@@ -912,7 +823,7 @@ const ControlDeudas = () => {
                                     </p>
                                 </div>
 
-                                <div style={{ textAlign: 'right' }}>
+                                <div style={{ textAlign: 'right', flexShrink: 0, minWidth: 'fit-content' }}>
                                     <p style={{ fontWeight: '800', fontSize: '16px', color: 'var(--danger)' }}>${new Intl.NumberFormat('es-CO').format(d.monto_total)}</p>
                                     <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '4px' }}>
                                         {d.comprobante_url && (
@@ -1055,7 +966,7 @@ const ControlDeudas = () => {
                         {previewFile.type === 'pdf' ? (
                             <div style={{ width: '90vw', maxWidth: '800px', height: '80vh', background: 'white', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.2)' }}>
                                 <iframe
-                                    src={previewFile.url}
+                                    src={`https://docs.google.com/viewer?url=${encodeURIComponent(previewFile.url)}&embedded=true`}
                                     style={{
                                         width: '100%',
                                         height: '100%',
@@ -1312,17 +1223,28 @@ const ControlDeudas = () => {
                                         <div key={a.id} style={{ padding: '12px', borderRadius: '14px', background: 'var(--bg)', border: '1.5px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                             <div>
                                                 <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
-                                                    <p style={{ fontWeight: '800', fontSize: '15px', color: 'var(--primary)' }}>
+                                                    <span style={{ fontWeight: '800', fontSize: '15px', color: 'var(--primary)' }}>
                                                         ${new Intl.NumberFormat('es-CO').format(a.monto_abonado)}
-                                                    </p>
+                                                    </span>
                                                     {(a.monto_cargos > 0) && (
-                                                        <p style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '500' }}>
+                                                        <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '500' }}>
                                                             (de ${new Intl.NumberFormat('es-CO').format(a.monto_total_pago || a.monto_abonado)})
-                                                        </p>
+                                                        </span>
                                                     )}
                                                 </div>
-                                                <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                                                    {formatearFecha(a.fecha_pago)} {a.notas && `• ${a.notas}`}
+                                                <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
+                                                    <span>{formatearFecha(a.fecha_pago)}</span>
+                                                    <span>•</span>
+                                                    <span style={{ color: 'var(--text)', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                                        <User size={10} style={{ color: 'var(--primary)', opacity: 0.8 }} />
+                                                        {formatearNombreMostrar(a.perfiles?.nombre_completo)}
+                                                    </span>
+                                                    {a.notas && (
+                                                        <>
+                                                            <span>•</span>
+                                                            <span>{a.notas}</span>
+                                                        </>
+                                                    )}
                                                     {a.monto_cargos > 0 && <span style={{ color: 'var(--danger)' }}> • Seguro: ${new Intl.NumberFormat('es-CO').format(a.monto_cargos)}</span>}
                                                 </p>
                                             </div>

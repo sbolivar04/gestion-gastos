@@ -8,25 +8,15 @@ import {
     Calendar,
     Download,
     Search,
-    ChevronLeft,
-    ChevronRight,
+    X,
 } from 'lucide-react';
 import CalendarioPremium from '../componentes/CalendarioPremium';
 import SelectorCategoriaPremium from '../componentes/SelectorCategoriaPremium';
 import SelectorPresupuestoPremium from '../componentes/SelectorPresupuestoPremium';
-import { getHoyColombia, formatearFecha, getStartEnd, formatRango } from '../utilidades/fechas';
+import { getHoyColombia, formatearFecha } from '../utilidades/fechas';
 import BannerAlerta from '../componentes/BannerAlerta';
 import SelectorFiltroCategoria from '../componentes/SelectorFiltroCategoria';
-
-type Granularidad = 'dia' | 'semana' | 'mes' | 'año' | 'periodo';
-
-const PERIODOS: { id: Granularidad; label: string }[] = [
-    { id: 'dia', label: 'Día' },
-    { id: 'semana', label: 'Semana' },
-    { id: 'mes', label: 'Mes' },
-    { id: 'año', label: 'Año' },
-    { id: 'periodo', label: 'Periodo' },
-];
+import FiltroRangoFechas from '../componentes/FiltroRangoFechas';
 
 const nombresCampos: Record<string, string> = {
     titulo: 'Título',
@@ -82,40 +72,22 @@ const HistoricoGastos = () => {
     const [filtroTexto, setFiltroTexto] = useState('');
     const [filtroCategoria, setFiltroCategoria] = useState('todas');
 
-    // Estados para navegación de fechas
-    const [granularidad, setGranularidad] = useState<Granularidad>('mes');
-    const [fechaNavegacion, setFechaNavegacion] = useState<Date>(new Date());
-    const [fechaDesde, setFechaDesde] = useState<string>('');
-    const [fechaHasta, setFechaHasta] = useState<string>('');
-    const [mostrarCalDesde, setMostrarCalDesde] = useState(false);
-    const [mostrarCalHasta, setMostrarCalHasta] = useState(false);
+    // Estado consolidado de rango de fechas
+    const [rangoSeleccionado, setRangoSeleccionado] = useState<any>(null);
 
     // Estados para paginación
     const [page, setPage] = useState(0);
     const [hasMore, setHasMore] = useState(true);
     const PAGE_SIZE = 5;
 
-    const navegarFecha = (direccion: number) => {
-        const nuevaFecha = new Date(fechaNavegacion);
-        switch (granularidad) {
-            case 'dia': nuevaFecha.setDate(nuevaFecha.getDate() + direccion); break;
-            case 'semana': nuevaFecha.setDate(nuevaFecha.getDate() + (direccion * 7)); break;
-            case 'mes': nuevaFecha.setMonth(nuevaFecha.getMonth() + direccion); break;
-            case 'año': nuevaFecha.setFullYear(nuevaFecha.getFullYear() + direccion); break;
-        }
-        setFechaNavegacion(nuevaFecha);
-    };
 
-    const getRangoTitulo = () => {
-        if (granularidad === 'periodo') return 'Historial Personalizado';
-        return formatRango(fechaNavegacion, granularidad);
-    };
 
     const resetForm = () => {
         setTitulo('');
         setMontoDisplay('');
         setMontoSencillo(0);
         setCategoriaId('');
+        setIdIngresoFuente('');
         setFecha(getHoyColombia());
         setFechaEditada(false);
         setArchivo(null);
@@ -126,22 +98,24 @@ const HistoricoGastos = () => {
         setErrorSistema(null);
     };
 
-    const handleDownload = async () => {
-        if (!previewFile) return;
+    const handleDownload = async (url: string = '', isPdfStr: boolean = false) => {
+        const downloadUrl = url || previewFile?.url;
+        const isPdfType = isPdfStr || previewFile?.type === 'pdf';
+        if (!downloadUrl) return;
         try {
-            const response = await fetch(previewFile.url);
+            const response = await fetch(downloadUrl);
             const blob = await response.blob();
-            const url = window.URL.createObjectURL(blob);
+            const bUrl = window.URL.createObjectURL(blob);
             const link = document.createElement('a');
-            link.href = url;
-            link.download = `comprobante-${Date.now()}.${previewFile.type === 'pdf' ? 'pdf' : 'jpg'}`;
+            link.href = bUrl;
+            link.download = `comprobante-${Date.now()}.${isPdfType ? 'pdf' : 'jpg'}`;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
-            window.URL.revokeObjectURL(url);
+            window.URL.revokeObjectURL(bUrl);
         } catch (e) {
             console.error("Error downloading:", e);
-            window.open(previewFile.url, '_blank');
+            window.open(downloadUrl, '_blank');
         }
     };
 
@@ -157,9 +131,11 @@ const HistoricoGastos = () => {
         const { data: catData } = await supabase.from('categorias').select('*').order('nombre');
         if (catData) {
             const sorted = [...catData].sort((a, b) => {
-                if (a.nombre === 'Otros') return 1;
-                if (b.nombre === 'Otros') return -1;
-                return a.nombre.localeCompare(b.nombre);
+                const nameA = a.nombre || '';
+                const nameB = b.nombre || '';
+                if (nameA.toLowerCase() === 'otros') return 1;
+                if (nameB.toLowerCase() === 'otros') return -1;
+                return nameA.localeCompare(nameB, 'es', { sensitivity: 'base' });
             });
             setCategorias(sorted);
         }
@@ -192,17 +168,12 @@ const HistoricoGastos = () => {
         if (filtroTexto) query = query.ilike('titulo', `%${filtroTexto}%`);
         if (filtroCategoria !== 'todas') query = query.eq('id_categoria', filtroCategoria);
 
-        if (granularidad === 'periodo') {
-            if (fechaDesde) query = query.gte('fecha', fechaDesde);
-            if (fechaHasta) query = query.lte('fecha', fechaHasta);
-        } else {
-            const { start, end } = getStartEnd(fechaNavegacion, granularidad);
-            // Formatear a YYYY-MM-DD local para comparar con columna 'date'
-            const startStr = start.getFullYear() + '-' + String(start.getMonth() + 1).padStart(2, '0') + '-' + String(start.getDate()).padStart(2, '0');
-            const endStr = end.getFullYear() + '-' + String(end.getMonth() + 1).padStart(2, '0') + '-' + String(end.getDate()).padStart(2, '0');
+        const { start, end } = rangoSeleccionado;
+        // Formatear a YYYY-MM-DD local para comparar con columna 'date'
+        const startStr = start.getFullYear() + '-' + String(start.getMonth() + 1).padStart(2, '0') + '-' + String(start.getDate()).padStart(2, '0');
+        const endStr = end.getFullYear() + '-' + String(end.getMonth() + 1).padStart(2, '0') + '-' + String(end.getDate()).padStart(2, '0');
 
-            query = query.gte('fecha', startStr).lte('fecha', endStr);
-        }
+        query = query.gte('fecha', startStr).lte('fecha', endStr);
 
         query = query.order('fecha', { ascending: false }).order('creado_en', { ascending: false }).range(from, to);
 
@@ -221,35 +192,20 @@ const HistoricoGastos = () => {
     const fetchData = () => {
         fetchCategorias();
         fetchFuentes();
-        fetchGastos(true);
+        if (rangoSeleccionado) fetchGastos(true);
     };
 
-    // Referencia para mantener la función actualizada en el closure del subscription
-    const fetchGastosRef = useRef(fetchGastos);
-
     useEffect(() => {
-        fetchGastosRef.current = fetchGastos;
-    });
-
-    useEffect(() => {
-        const channel = supabase
-            .channel('gastos_realtime')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'gastos' }, () => {
-                fetchGastosRef.current(true);
-            })
-            .subscribe();
-
-        return () => {
-            supabase.removeChannel(channel);
-        };
-    }, []);
-
-    useEffect(() => {
-        const timeout = setTimeout(() => {
+        if (!rangoSeleccionado) return;
+        const delayDebounce = setTimeout(() => {
             fetchGastos(true);
-        }, 300);
-        return () => clearTimeout(timeout);
-    }, [filtroTexto, filtroCategoria, granularidad, fechaNavegacion, fechaDesde, fechaHasta]);
+        }, filtroTexto ? 400 : 0);
+        return () => clearTimeout(delayDebounce);
+    }, [filtroTexto, filtroCategoria, rangoSeleccionado]);
+
+
+
+
 
     const handleMontoChange = (val: string) => {
         const numericValue = val.replace(/\D/g, '');
@@ -272,7 +228,15 @@ const HistoricoGastos = () => {
         }
 
         if (data) {
-            setCategorias([...categorias, data[0]]);
+            const nuevasCategorias = [...categorias, data[0]];
+            const sorted = nuevasCategorias.sort((a, b) => {
+                const nameA = a.nombre || '';
+                const nameB = b.nombre || '';
+                if (nameA.toLowerCase() === 'otros') return 1;
+                if (nameB.toLowerCase() === 'otros') return -1;
+                return nameA.localeCompare(nameB, 'es', { sensitivity: 'base' });
+            });
+            setCategorias(sorted);
             setCategoriaId(data[0].id);
             setNuevaCategoria('');
             setMostrarNuevaCat(false);
@@ -283,9 +247,11 @@ const HistoricoGastos = () => {
         const { error } = await supabase.from('categorias').update({ nombre: newName }).eq('id', id);
         if (!error) {
             setCategorias(prev => prev.map(c => c.id === id ? { ...c, nombre: newName } : c).sort((a, b) => {
-                if (a.nombre === 'Otros') return 1;
-                if (b.nombre === 'Otros') return -1;
-                return a.nombre.localeCompare(b.nombre);
+                const nameA = a.nombre || '';
+                const nameB = b.nombre || '';
+                if (nameA.toLowerCase() === 'otros') return 1;
+                if (nameB.toLowerCase() === 'otros') return -1;
+                return nameA.localeCompare(nameB, 'es', { sensitivity: 'base' });
             }));
         } else {
             console.error("Error al actualizar categoría:", error.message);
@@ -356,7 +322,7 @@ const HistoricoGastos = () => {
         }
 
         if (finalFile) {
-            const name = `${Date.now()}-${finalFile.name}`;
+            const name = `gastos/${Date.now()}-${finalFile.name}`;
             const { data } = await supabase.storage.from('comprobantes').upload(name, finalFile);
             if (data) url = name;
         }
@@ -648,99 +614,12 @@ const HistoricoGastos = () => {
                     <SelectorFiltroCategoria
                         categorias={categorias}
                         value={filtroCategoria}
-                        onChange={(val) => setFiltroCategoria(val)}
+                        onChange={(val: string) => setFiltroCategoria(val)}
                     />
                 </div>
 
-                {/* Navegador de Fechas */}
-                <div className="card" style={{ padding: '0', overflow: 'visible', boxShadow: '0 2px 10px rgba(0,0,0,0.03)', borderRadius: '16px', position: 'relative', zIndex: 50 }}>
-                    <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', overflowX: 'auto' }}>
-                        {PERIODOS.map(p => (
-                            <button
-                                key={p.id}
-                                onClick={() => setGranularidad(p.id)}
-                                style={{
-                                    flex: 1,
-                                    padding: '10px 6px',
-                                    background: granularidad === p.id ? 'var(--bg)' : 'transparent',
-                                    border: 'none',
-                                    borderBottom: granularidad === p.id ? '2px solid var(--primary)' : '2px solid transparent',
-                                    color: granularidad === p.id ? 'var(--primary)' : 'var(--text-muted)',
-                                    fontWeight: granularidad === p.id ? '700' : '500',
-                                    fontSize: '11px',
-                                    cursor: 'pointer',
-                                    whiteSpace: 'nowrap',
-                                    transition: 'all 0.2s'
-                                }}
-                            >
-                                {p.label}
-                            </button>
-                        ))}
-                    </div>
-
-                    {granularidad !== 'periodo' ? (
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', background: 'var(--card)', borderBottomLeftRadius: '16px', borderBottomRightRadius: '16px' }}>
-                            <button onClick={() => navegarFecha(-1)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}>
-                                <ChevronLeft size={18} />
-                            </button>
-                            <span style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text)', textTransform: 'capitalize' }}>
-                                {getRangoTitulo()}
-                            </span>
-                            <button onClick={() => navegarFecha(1)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}>
-                                <ChevronRight size={18} />
-                            </button>
-                        </div>
-                    ) : (
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '10px 16px', background: 'var(--card)', borderBottomLeftRadius: '16px', borderBottomRightRadius: '16px' }}>
-                            <div style={{ position: 'relative' }}>
-                                <button
-                                    onClick={() => setMostrarCalDesde(!mostrarCalDesde)}
-                                    onMouseDown={(e) => e.stopPropagation()}
-                                    style={{ background: 'var(--bg)', border: fechaDesde ? '1.5px solid var(--primary)' : '1px solid var(--border)', borderRadius: '10px', padding: '6px 10px', fontSize: '11px', color: 'var(--text)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
-                                >
-                                    <Calendar size={14} style={{ color: 'var(--text-muted)' }} />
-                                    <span>{fechaDesde ? formatearFecha(fechaDesde) : 'Desde'}</span>
-                                </button>
-                                {mostrarCalDesde && (
-                                    <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: '8px', zIndex: 2000 }}>
-                                        <CalendarioPremium
-                                            selectedDate={fechaDesde || getHoyColombia()}
-                                            onSelect={(date) => { setFechaDesde(date); setMostrarCalDesde(false); }}
-                                            maxDate="2099-12-31"
-                                            onClose={() => setMostrarCalDesde(false)}
-                                        />
-                                    </div>
-                                )}
-                            </div>
-                            <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>-</span>
-                            <div style={{ position: 'relative' }}>
-                                <button
-                                    onClick={() => setMostrarCalHasta(!mostrarCalHasta)}
-                                    onMouseDown={(e) => e.stopPropagation()}
-                                    style={{ background: 'var(--bg)', border: fechaHasta ? '1.5px solid var(--primary)' : '1px solid var(--border)', borderRadius: '10px', padding: '6px 10px', fontSize: '11px', color: 'var(--text)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
-                                >
-                                    <Calendar size={14} style={{ color: 'var(--text-muted)' }} />
-                                    <span>{fechaHasta ? formatearFecha(fechaHasta) : 'Hasta'}</span>
-                                </button>
-                                {mostrarCalHasta && (
-                                    <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '8px', zIndex: 2000 }}>
-                                        <CalendarioPremium
-                                            selectedDate={fechaHasta || getHoyColombia()}
-                                            onSelect={(date) => { setFechaHasta(date); setMostrarCalHasta(false); }}
-                                            maxDate="2099-12-31"
-                                            onClose={() => setMostrarCalHasta(false)}
-                                        />
-                                    </div>
-                                )}
-                            </div>
-                            {(fechaDesde || fechaHasta) && (
-                                <button onClick={() => { setFechaDesde(''); setFechaHasta(''); }} style={{ background: 'none', border: 'none', color: 'var(--danger)', fontSize: '11px', cursor: 'pointer', marginLeft: '4px', fontWeight: '600' }}>
-                                    Limpiar
-                                </button>
-                            )}
-                        </div>
-                    )}
-                </div>
+                {/* Navegador de Rango de Fecha Centralizado */}
+                <FiltroRangoFechas onChange={setRangoSeleccionado} />
             </div>
 
 
@@ -770,7 +649,7 @@ const HistoricoGastos = () => {
                                                     const isPdf = g.comprobante_url.toLowerCase().endsWith('.pdf');
                                                     setPreviewFile({ url: fullUrl, type: isPdf ? 'pdf' : 'image' });
                                                 }}
-                                                style={{ color: 'var(--text-muted)', padding: '8px' }}
+                                                style={{ color: 'var(--text-muted)', background: 'none', border: 'none', padding: '8px', cursor: 'pointer' }}
                                                 title="Ver factura"
                                             >
                                                 <Eye size={18} />
@@ -816,7 +695,7 @@ const HistoricoGastos = () => {
                         <div className="fade-in" style={{ position: 'relative', width: 'auto', maxWidth: '100%', maxHeight: '90vh', display: 'flex', flexDirection: 'column', alignItems: 'center' }} onClick={e => e.stopPropagation()}>
                             <div style={{ position: 'absolute', top: '-50px', right: 0, display: 'flex', gap: '12px' }}>
                                 <button
-                                    onClick={handleDownload}
+                                    onClick={() => previewFile && handleDownload(previewFile.url, previewFile.type === 'pdf')}
                                     style={{ background: 'var(--primary)', color: 'white', border: 'none', borderRadius: '12px', padding: '10px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', fontWeight: '600' }}
                                     title="Descargar"
                                 >
@@ -824,19 +703,19 @@ const HistoricoGastos = () => {
                                 </button>
                                 <button
                                     onClick={() => setPreviewFile(null)}
-                                    style={{ background: 'rgba(255,255,255,0.2)', color: 'white', border: 'none', borderRadius: '12px', padding: '10px 16px', cursor: 'pointer', fontSize: '20px' }}
+                                    style={{ background: 'rgba(255,255,255,0.2)', color: 'white', border: 'none', borderRadius: '12px', padding: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                                     title="Cerrar"
                                 >
-                                    ✕
+                                    <X size={20} />
                                 </button>
                             </div>
 
-                            {previewFile.type === 'image' ? (
-                                <img src={previewFile.url} alt="Comprobante" style={{ maxWidth: '100%', maxHeight: '80vh', borderRadius: '12px', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.2)' }} />
-                            ) : (
+                            {previewFile.type === 'pdf' ? (
                                 <div style={{ width: '90vw', maxWidth: '800px', height: '80vh', background: 'white', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.2)' }}>
-                                    <iframe src={previewFile.url} style={{ width: '100%', height: '100%', border: 'none' }} title="Vista previa PDF" />
+                                    <iframe src={`https://docs.google.com/viewer?url=${encodeURIComponent(previewFile.url)}&embedded=true`} style={{ width: '100%', height: '100%', border: 'none' }} title="Vista Previa PDF" />
                                 </div>
+                            ) : (
+                                <img src={previewFile.url} alt="Comprobante" style={{ maxWidth: '100%', maxHeight: '80vh', borderRadius: '12px', boxShadow: '0 20px 60px rgba(0,0,0,0.5)' }} />
                             )}
                         </div>
                     </div>
