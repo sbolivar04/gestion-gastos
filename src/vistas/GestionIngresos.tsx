@@ -9,8 +9,6 @@ import {
     CreditCard,
     AlertCircle,
     Check,
-    ChevronLeft,
-    ChevronRight,
     Copy,
     ChevronDown,
     ChevronUp,
@@ -20,6 +18,7 @@ import {
     X
 } from 'lucide-react';
 import { formatearFecha, getISODateLocal } from '../utilidades/fechas';
+import FiltroRangoFechas from '../componentes/FiltroRangoFechas';
 
 const GestionIngresos = ({ user }: any) => {
     const [fuentes, setFuentes] = useState<any[]>([]);
@@ -47,17 +46,21 @@ const GestionIngresos = ({ user }: any) => {
         }));
     };
 
-    // Estado para el periodo seleccionado
-    const [fechaReferencia, setFechaReferencia] = useState(new Date());
+    // Estado consolidado de rango de fechas
+    const [rangoSeleccionado, setRangoSeleccionado] = useState<any>(null);
 
     useEffect(() => {
-        fetchFuentes();
-    }, [user.id, fechaReferencia]);
+        if (rangoSeleccionado) {
+            fetchFuentes();
+        }
+    }, [user.id, rangoSeleccionado]);
 
     const fetchFuentes = async () => {
+        if (!rangoSeleccionado) return;
         setLoading(true);
-        const mes = fechaReferencia.getMonth() + 1;
-        const anio = fechaReferencia.getFullYear();
+        const { start } = rangoSeleccionado;
+        const mes = start.getMonth() + 1;
+        const anio = start.getFullYear();
 
         // 1. Obtener Fuentes
         const { data: dataFuentes } = await supabase
@@ -131,8 +134,9 @@ const GestionIngresos = ({ user }: any) => {
         if (!formData.nombre || !formData.monto_estimado) return;
 
         setSaving(true);
-        const mes = fechaReferencia.getMonth() + 1;
-        const anio = fechaReferencia.getFullYear();
+        const { start } = rangoSeleccionado;
+        const mes = start.getMonth() + 1;
+        const anio = start.getFullYear();
 
         // Normalizar nombre: Trim y Capitalización
         const nombreLimpio = formData.nombre.trim();
@@ -160,11 +164,12 @@ const GestionIngresos = ({ user }: any) => {
         if (!confirm('¿Quieres copiar los ingresos del mes pasado a este periodo?')) return;
 
         setLoading(true);
-        const mesActual = fechaReferencia.getMonth() + 1;
-        const anioActual = fechaReferencia.getFullYear();
+        const { start } = rangoSeleccionado;
+        const mesActual = start.getMonth() + 1;
+        const anioActual = start.getFullYear();
 
         // Calcular mes anterior
-        const anterior = new Date(fechaReferencia);
+        const anterior = new Date(start);
         anterior.setMonth(anterior.getMonth() - 1);
         const mesAnt = anterior.getMonth() + 1;
         const anioAnt = anterior.getFullYear();
@@ -206,14 +211,8 @@ const GestionIngresos = ({ user }: any) => {
         if (!error) fetchFuentes();
     };
 
-    const navegarMes = (num: number) => {
-        const nueva = new Date(fechaReferencia);
-        nueva.setMonth(nueva.getMonth() + num);
-        setFechaReferencia(nueva);
-    };
-
     const totalIngresos = fuentes.reduce((acc, f) => acc + Number(f.monto_estimado), 0);
-    const nombreMes = fechaReferencia.toLocaleDateString('es-CO', { month: 'long', year: 'numeric' });
+    const nombreMes = rangoSeleccionado?.label || '...';
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', paddingBottom: '40px' }}>
@@ -222,18 +221,8 @@ const GestionIngresos = ({ user }: any) => {
                 <p style={{ color: 'var(--text-muted)', fontSize: '14px' }}>Gestiona tus ingresos por cada mes</p>
             </div>
 
-            {/* Navegador de Periodo */}
-            <div className="card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px', background: 'var(--card)' }}>
-                <button onClick={() => navegarMes(-1)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary)', display: 'flex', alignItems: 'center' }}>
-                    <ChevronLeft size={24} />
-                </button>
-                <div style={{ textAlign: 'center' }}>
-                    <p style={{ fontSize: '14px', fontWeight: '800', textTransform: 'capitalize', color: 'var(--primary)' }}>{nombreMes}</p>
-                </div>
-                <button onClick={() => navegarMes(1)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary)', display: 'flex', alignItems: 'center' }}>
-                    <ChevronRight size={24} />
-                </button>
-            </div>
+            {/* Navegador de Periodo Centralizado */}
+            <FiltroRangoFechas onChange={setRangoSeleccionado} />
 
             {/* Resumen de Capacidad */}
             <div className="card" style={{

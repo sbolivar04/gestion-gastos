@@ -125,7 +125,7 @@ const FiltroRangoFechas = ({
     }, [granularidad, fechaNavegacion, fechaDesde, fechaHasta, getStartEnd, onChange, renderRangoTexto]);
 
     return (
-        <div className="card" style={{ padding: '0', overflow: 'visible', marginBottom: '16px', position: 'relative', zIndex: 100, boxShadow: '0 2px 10px rgba(0,0,0,0.03)', borderRadius: '16px' }}>
+        <div className="card" style={{ padding: '0', overflow: 'visible', marginBottom: '16px', position: 'relative', zIndex: 10, boxShadow: '0 2px 10px rgba(0,0,0,0.03)', borderRadius: '16px' }}>
             <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', overflowX: 'auto', scrollbarWidth: 'none' }}>
                 {PERIODOS.map(p => (
                     <button
