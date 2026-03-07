@@ -309,3 +309,20 @@ Para mejorar el rendimiento y evitar problemas con listas largas, usamos paginac
 ### 3. Botón "Mostrar más"
 - Se muestra solo sí `{!loading && hasMore}`.
 - Estilo estándar: `btn-hover-soft` con borde visual y texto centrado.
+
+---
+
+## 📉 Estándar de Paginación en Listas Minimalistas (NUEVO)
+
+Para evitar la saturación visual en vistas de detalle (ej: gastos dentro de una fuente de ingreso):
+
+- **Límite Inicial:** Mostrar por defecto solo los **últimos 5 movimientos**.
+- **Botón de Expansión:** Si existen más de 5 registros, mostrar el botón `btn-hover-soft` con el texto: *"Mostrar todos los movimientos (X)"* o *"Mostrar más movimientos"*.
+- **Botón de Contracción:** Una vez expandida la lista o cargado más de un bloque de 5, mostrar un botón secundario a la derecha con el texto *"Mostrar menos"* para resetear la vista a los últimos 5.
+- **Comportamiento:** 
+  - Al expandir: Muestra la totalidad o carga el siguiente bloque.
+  - Al contraer: Resetea el scroll y muestra únicamente los primeros 5 registros.
+- **Estilo:** 
+  - Ambos botones (Más/Menos) deben usar el color principal `var(--primary)` y un peso de fuente `700` para mantener la coherencia en las acciones de navegación de listas.
+  - El fondo debe ser `var(--card)` o `var(--bg)` con un borde sutil de `1.5px solid var(--border)`.
+  - El tamaño de fuente estándar para estos botones es `13px`.

@@ -14,6 +14,7 @@ import {
     Search,
     ChevronLeft,
     ChevronRight,
+    User,
 } from 'lucide-react';
 
 type Granularidad = 'dia' | 'semana' | 'mes' | 'año' | 'periodo';
@@ -27,6 +28,7 @@ const PERIODOS: { id: Granularidad; label: string }[] = [
 ];
 import CalendarioPremium from '../componentes/CalendarioPremium';
 import { getHoyColombia, formatearFecha, getStartEnd, formatRango } from '../utilidades/fechas';
+import { formatearNombreMostrar } from '../utilidades/formato';
 import BannerAlerta from '../componentes/BannerAlerta';
 
 const nombresCampos: Record<string, string> = {
@@ -76,7 +78,7 @@ const ControlDeudas = () => {
     const [filtroEstado, setFiltroEstado] = useState<'todas' | 'pendientes' | 'pagadas'>('todas');
 
     // Estados para navegación de fechas
-    const [granularidad, setGranularidad] = useState<Granularidad>('mes');
+    const [granularidad, setGranularidad] = useState<Granularidad>('periodo');
     const [fechaNavegacion, setFechaNavegacion] = useState<Date>(new Date());
     const [fechaDesde, setFechaDesde] = useState<string>('');
     const [fechaHasta, setFechaHasta] = useState<string>('');
@@ -173,7 +175,7 @@ const ControlDeudas = () => {
             // Marcar deuda como compartida si se añadió el primer participante
             await supabase.from('deudas').update({ es_compartida: true }).eq('id', deudaACompartir.id);
             await fetchParticipantes(deudaACompartir.id);
-            await fetchDeudas();
+            await fetchDeudas(true);
             setQueryUsuario('');
             setUsuariosSugeridos([]);
         }
@@ -193,14 +195,14 @@ const ControlDeudas = () => {
             if (!restantes || restantes.length === 0) {
                 await supabase.from('deudas').update({ es_compartida: false }).eq('id', deudaACompartir.id);
             }
-            await fetchDeudas();
+            await fetchDeudas(true);
         }
     };
 
     const fetchAbonos = async (idDeuda: string) => {
         const { data } = await supabase
             .from('abonos_deuda')
-            .select('*, perfiles!creado_por(nombre_completo)')
+            .select('*, perfiles!fk_abonos_deuda_creado_por(nombre_completo)')
             .eq('id_deuda', idDeuda)
             .order('creado_en', { ascending: false });
         if (data) setAbonos(data);
@@ -349,7 +351,7 @@ const ControlDeudas = () => {
 
         let query = supabase
             .from('deudas')
-            .select('*, abonos_deuda(monto_abonado), perfiles!id_propietario(nombre_completo)', { count: 'exact' })
+            .select('*, abonos_deuda(monto_abonado), perfiles!fk_deudas_id_propietario(nombre_completo)', { count: 'exact' })
             .order('creado_en', { ascending: false })
             .range(from, to);
 
@@ -499,10 +501,42 @@ const ControlDeudas = () => {
 
     const handleEliminar = async () => {
         if (!deudaAEliminar) return;
-        const { error } = await supabase.from('deudas').delete().eq('id', deudaAEliminar.id);
-        if (!error) {
-            fetchDeudas(true);
-            setDeudaAEliminar(null);
+
+        try {
+            const archivosAEliminar: string[] = [];
+
+            if (deudaAEliminar.comprobante_url) {
+                archivosAEliminar.push(deudaAEliminar.comprobante_url);
+            }
+
+            const { data: abonosData } = await supabase
+                .from('abonos_deuda')
+                .select('comprobante_url')
+                .eq('id_deuda', deudaAEliminar.id);
+
+            if (abonosData) {
+                abonosData.forEach(a => {
+                    if (a.comprobante_url) archivosAEliminar.push(a.comprobante_url);
+                });
+            }
+
+            if (archivosAEliminar.length > 0) {
+                await supabase.storage
+                    .from('comprobantes')
+                    .remove(archivosAEliminar);
+            }
+
+            const { error } = await supabase.from('deudas').delete().eq('id', deudaAEliminar.id);
+
+            if (!error) {
+                fetchDeudas(true);
+                setDeudaAEliminar(null);
+            } else {
+                setErrorSistema("No se pudo eliminar la deuda por un error en la base de datos.");
+            }
+        } catch (error: any) {
+            console.error("Error al eliminar:", error);
+            setErrorSistema("Ocurrió un error inesperado.");
         }
     };
 
@@ -703,7 +737,7 @@ const ControlDeudas = () => {
             )}
 
             {/* Barra de Filtros (Buscador y Estados)  */}
-            {!loading && deudas.length > 0 && (
+            {!loading && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '8px' }}>
                     <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
                         {/* Buscador */}
@@ -735,6 +769,7 @@ const ControlDeudas = () => {
                                     key={estado}
                                     onClick={() => setFiltroEstado(estado)}
                                     style={{
+                                        flex: 1,
                                         padding: '10px 12px',
                                         borderRadius: '12px',
                                         border: 'none',
@@ -895,16 +930,26 @@ const ControlDeudas = () => {
                                     );
                                 })()}
 
-                                <div style={{ flex: 1 }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        <p style={{ fontWeight: '700', fontSize: '16px', color: 'var(--text)' }}>{d.titulo}</p>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                        <p style={{
+                                            fontWeight: '700',
+                                            fontSize: '15px',
+                                            color: 'var(--text)',
+                                            whiteSpace: 'nowrap',
+                                            overflow: 'hidden',
+                                            textOverflow: 'ellipsis',
+                                            maxWidth: '100%'
+                                        }}>
+                                            {d.titulo}
+                                        </p>
                                         {d.es_compartida && (
-                                            <span style={{ fontSize: '10px', background: 'rgba(139, 92, 246, 0.1)', color: '#8B5CF6', padding: '2px 8px', borderRadius: '10px', fontWeight: '700' }}>
+                                            <span style={{ fontSize: '9px', background: 'rgba(139, 92, 246, 0.1)', color: '#8B5CF6', padding: '1px 6px', borderRadius: '8px', fontWeight: '700', whiteSpace: 'nowrap' }}>
                                                 Compartida
                                             </span>
                                         )}
                                     </div>
-                                    <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                                    <p style={{ fontSize: '12px', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                         {d.id_propietario !== userLogueado?.id && d.perfiles?.nombre_completo
                                             ? `Dueño: ${d.perfiles.nombre_completo}`
                                             : (d.descripcion || 'Sin descripción')}
@@ -912,7 +957,7 @@ const ControlDeudas = () => {
                                     </p>
                                 </div>
 
-                                <div style={{ textAlign: 'right' }}>
+                                <div style={{ textAlign: 'right', flexShrink: 0, minWidth: 'fit-content' }}>
                                     <p style={{ fontWeight: '800', fontSize: '16px', color: 'var(--danger)' }}>${new Intl.NumberFormat('es-CO').format(d.monto_total)}</p>
                                     <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '4px' }}>
                                         {d.comprobante_url && (
@@ -1055,7 +1100,7 @@ const ControlDeudas = () => {
                         {previewFile.type === 'pdf' ? (
                             <div style={{ width: '90vw', maxWidth: '800px', height: '80vh', background: 'white', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.2)' }}>
                                 <iframe
-                                    src={previewFile.url}
+                                    src={`https://docs.google.com/viewer?url=${encodeURIComponent(previewFile.url)}&embedded=true`}
                                     style={{
                                         width: '100%',
                                         height: '100%',
@@ -1312,17 +1357,28 @@ const ControlDeudas = () => {
                                         <div key={a.id} style={{ padding: '12px', borderRadius: '14px', background: 'var(--bg)', border: '1.5px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                             <div>
                                                 <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
-                                                    <p style={{ fontWeight: '800', fontSize: '15px', color: 'var(--primary)' }}>
+                                                    <span style={{ fontWeight: '800', fontSize: '15px', color: 'var(--primary)' }}>
                                                         ${new Intl.NumberFormat('es-CO').format(a.monto_abonado)}
-                                                    </p>
+                                                    </span>
                                                     {(a.monto_cargos > 0) && (
-                                                        <p style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '500' }}>
+                                                        <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '500' }}>
                                                             (de ${new Intl.NumberFormat('es-CO').format(a.monto_total_pago || a.monto_abonado)})
-                                                        </p>
+                                                        </span>
                                                     )}
                                                 </div>
-                                                <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                                                    {formatearFecha(a.fecha_pago)} {a.notas && `• ${a.notas}`}
+                                                <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
+                                                    <span>{formatearFecha(a.fecha_pago)}</span>
+                                                    <span>•</span>
+                                                    <span style={{ color: 'var(--text)', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                                        <User size={10} style={{ color: 'var(--primary)', opacity: 0.8 }} />
+                                                        {formatearNombreMostrar(a.perfiles?.nombre_completo)}
+                                                    </span>
+                                                    {a.notas && (
+                                                        <>
+                                                            <span>•</span>
+                                                            <span>{a.notas}</span>
+                                                        </>
+                                                    )}
                                                     {a.monto_cargos > 0 && <span style={{ color: 'var(--danger)' }}> • Seguro: ${new Intl.NumberFormat('es-CO').format(a.monto_cargos)}</span>}
                                                 </p>
                                             </div>

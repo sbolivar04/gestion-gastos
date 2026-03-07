@@ -224,6 +224,20 @@ button {
   transform: scale(0.98);
 }
 
+.btn-hover-soft {
+  transition: all 0.2s ease;
+}
+
+.btn-hover-soft:hover {
+  background-color: var(--bg) !important;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.btn-hover-soft:active {
+  transform: translateY(0);
+}
+
 .badge {
   padding: 4px 12px;
   border-radius: 9999px;

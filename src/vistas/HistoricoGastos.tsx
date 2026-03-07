@@ -10,6 +10,7 @@ import {
     Search,
     ChevronLeft,
     ChevronRight,
+    X,
 } from 'lucide-react';
 import CalendarioPremium from '../componentes/CalendarioPremium';
 import SelectorCategoriaPremium from '../componentes/SelectorCategoriaPremium';
@@ -32,7 +33,8 @@ const nombresCampos: Record<string, string> = {
     titulo: 'Título',
     monto: 'Monto',
     fecha: 'Fecha',
-    categoria: 'Categoría'
+    categoria: 'Categoría',
+    presupuesto: 'Presupuesto'
 };
 
 const PALETA_COLORES = [
@@ -93,6 +95,7 @@ const HistoricoGastos = () => {
     // Estados para paginación
     const [page, setPage] = useState(0);
     const [hasMore, setHasMore] = useState(true);
+    const [listaVersion, setListaVersion] = useState(0);
     const PAGE_SIZE = 5;
 
     const navegarFecha = (direccion: number) => {
@@ -126,22 +129,24 @@ const HistoricoGastos = () => {
         setErrorSistema(null);
     };
 
-    const handleDownload = async () => {
-        if (!previewFile) return;
+    const handleDownload = async (url: string = '', isPdfStr: boolean = false) => {
+        const downloadUrl = url || previewFile?.url;
+        const isPdfType = isPdfStr || previewFile?.type === 'pdf';
+        if (!downloadUrl) return;
         try {
-            const response = await fetch(previewFile.url);
+            const response = await fetch(downloadUrl);
             const blob = await response.blob();
-            const url = window.URL.createObjectURL(blob);
+            const bUrl = window.URL.createObjectURL(blob);
             const link = document.createElement('a');
-            link.href = url;
-            link.download = `comprobante-${Date.now()}.${previewFile.type === 'pdf' ? 'pdf' : 'jpg'}`;
+            link.href = bUrl;
+            link.download = `comprobante-${Date.now()}.${isPdfType ? 'pdf' : 'jpg'}`;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
-            window.URL.revokeObjectURL(url);
+            window.URL.revokeObjectURL(bUrl);
         } catch (e) {
             console.error("Error downloading:", e);
-            window.open(previewFile.url, '_blank');
+            window.open(downloadUrl, '_blank');
         }
     };
 
@@ -299,6 +304,7 @@ const HistoricoGastos = () => {
         if (!titulo.trim()) nuevosErrores.push('titulo');
         if (!montoSencillo) nuevosErrores.push('monto');
         if (!categoriaId) nuevosErrores.push('categoria');
+        if (!idIngresoFuente) nuevosErrores.push('presupuesto');
 
         if (nuevosErrores.length > 0) {
             setErrores(nuevosErrores);
@@ -356,7 +362,7 @@ const HistoricoGastos = () => {
         }
 
         if (finalFile) {
-            const name = `${Date.now()}-${finalFile.name}`;
+            const name = `gastos/${Date.now()}-${finalFile.name}`;
             const { data } = await supabase.storage.from('comprobantes').upload(name, finalFile);
             if (data) url = name;
         }
@@ -508,7 +514,8 @@ const HistoricoGastos = () => {
                                 <SelectorPresupuestoPremium
                                     fuentes={fuentes}
                                     fuenteId={idIngresoFuente}
-                                    onSelect={(id) => setIdIngresoFuente(id)}
+                                    onSelect={(id) => { setIdIngresoFuente(id); setErrores(prev => prev.filter(err => err !== 'presupuesto')); }}
+                                    error={errores.includes('presupuesto')}
                                 />
                             )}
 
@@ -619,7 +626,7 @@ const HistoricoGastos = () => {
                             <button
                                 type="submit"
                                 className="btn-pill btn-pill-primary"
-                                disabled={enviando || !titulo.trim() || !montoSencillo || !categoriaId}
+                                disabled={enviando || !titulo.trim() || !montoSencillo || !categoriaId || !idIngresoFuente}
                                 style={{ border: 'none', outline: 'none', width: '100%' }}
                             >
                                 {enviando ? 'Guardando...' : 'Guardar Gasto'}
@@ -744,11 +751,28 @@ const HistoricoGastos = () => {
             </div>
 
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '4px' }}>
-                {loading && page === 0 ? <p style={{ textAlign: 'center', padding: '40px' }}>Cargando...</p> :
+            <div
+                key={listaVersion}
+                style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '4px' }}
+            >
+                {loading && gastos.length === 0 ? (
+                    <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}>
+                        <div className="loading-spinner"></div>
+                    </div>
+                ) : (
                     <>
-                        {gastos.map(g => (
-                            <div key={g.id} className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px' }}>
+                        {gastos.map((g, index) => (
+                            <div
+                                key={g.id}
+                                className="card fade-in"
+                                style={{
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    padding: '16px',
+                                    animationDelay: `${(index % 5) * 0.05}s`
+                                }}
+                            >
                                 <div style={{ display: 'flex', gap: '14px', alignItems: 'center' }}>
                                     <div style={{ width: '44px', height: '44px', background: 'var(--bg)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: g.categorias?.color || 'var(--primary)' }}>
                                         <Receipt size={22} />
@@ -770,7 +794,7 @@ const HistoricoGastos = () => {
                                                     const isPdf = g.comprobante_url.toLowerCase().endsWith('.pdf');
                                                     setPreviewFile({ url: fullUrl, type: isPdf ? 'pdf' : 'image' });
                                                 }}
-                                                style={{ color: 'var(--text-muted)', padding: '8px' }}
+                                                style={{ color: 'var(--text-muted)', background: 'none', border: 'none', padding: '8px', cursor: 'pointer' }}
                                                 title="Ver factura"
                                             >
                                                 <Eye size={18} />
@@ -781,32 +805,67 @@ const HistoricoGastos = () => {
                             </div>
                         ))}
                     </>
-                }
+                )}
                 {!loading && gastos.length === 0 && <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px' }}>No hay movimientos.</p>}
 
-                {!loading && hasMore && gastos.length > 0 && (
-                    <button
-                        onClick={() => fetchGastos(false)}
-                        className="btn-hover-soft"
-                        style={{
-                            padding: '12px',
-                            background: 'var(--card)',
-                            border: '1.5px solid var(--border)',
-                            borderRadius: '16px',
-                            color: 'var(--primary)',
-                            fontWeight: '700',
-                            fontSize: '13px',
-                            cursor: 'pointer',
-                            marginTop: '8px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '8px',
-                            transition: 'all 0.2s'
-                        }}
-                    >
-                        Mostrar más movimientos
-                    </button>
+                {(hasMore || gastos.length > 5) && gastos.length > 0 && (
+                    <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
+                        {hasMore && (
+                            <button
+                                onClick={() => fetchGastos(false)}
+                                className="btn-hover-soft"
+                                disabled={loading}
+                                style={{
+                                    flex: 1,
+                                    padding: '12px',
+                                    background: 'var(--card)',
+                                    border: '1.5px solid var(--border)',
+                                    borderRadius: '16px',
+                                    color: 'var(--primary)',
+                                    fontWeight: '700',
+                                    fontSize: '13px',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '8px',
+                                    transition: 'all 0.2s',
+                                    opacity: loading ? 0.7 : 1
+                                }}
+                            >
+                                Mostrar más movimientos
+                            </button>
+                        )}
+                        {gastos.length > 5 && (
+                            <button
+                                onClick={() => {
+                                    setGastos(prev => prev.slice(0, 5));
+                                    setPage(0);
+                                    setHasMore(true);
+                                    setListaVersion(v => v + 1);
+                                }}
+                                className="btn-hover-soft"
+                                style={{
+                                    flex: hasMore ? 0.4 : 1,
+                                    padding: '12px',
+                                    background: 'var(--card)',
+                                    border: '1.5px solid var(--border)',
+                                    borderRadius: '16px',
+                                    color: 'var(--primary)',
+                                    fontWeight: '700',
+                                    fontSize: '13px',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '8px',
+                                    transition: 'all 0.2s'
+                                }}
+                            >
+                                Mostrar menos movimientos
+                            </button>
+                        )}
+                    </div>
                 )}
             </div>
 
@@ -816,7 +875,7 @@ const HistoricoGastos = () => {
                         <div className="fade-in" style={{ position: 'relative', width: 'auto', maxWidth: '100%', maxHeight: '90vh', display: 'flex', flexDirection: 'column', alignItems: 'center' }} onClick={e => e.stopPropagation()}>
                             <div style={{ position: 'absolute', top: '-50px', right: 0, display: 'flex', gap: '12px' }}>
                                 <button
-                                    onClick={handleDownload}
+                                    onClick={() => previewFile && handleDownload(previewFile.url, previewFile.type === 'pdf')}
                                     style={{ background: 'var(--primary)', color: 'white', border: 'none', borderRadius: '12px', padding: '10px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', fontWeight: '600' }}
                                     title="Descargar"
                                 >
@@ -824,19 +883,19 @@ const HistoricoGastos = () => {
                                 </button>
                                 <button
                                     onClick={() => setPreviewFile(null)}
-                                    style={{ background: 'rgba(255,255,255,0.2)', color: 'white', border: 'none', borderRadius: '12px', padding: '10px 16px', cursor: 'pointer', fontSize: '20px' }}
+                                    style={{ background: 'rgba(255,255,255,0.2)', color: 'white', border: 'none', borderRadius: '12px', padding: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                                     title="Cerrar"
                                 >
-                                    ✕
+                                    <X size={20} />
                                 </button>
                             </div>
 
-                            {previewFile.type === 'image' ? (
-                                <img src={previewFile.url} alt="Comprobante" style={{ maxWidth: '100%', maxHeight: '80vh', borderRadius: '12px', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.2)' }} />
-                            ) : (
+                            {previewFile.type === 'pdf' ? (
                                 <div style={{ width: '90vw', maxWidth: '800px', height: '80vh', background: 'white', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.2)' }}>
-                                    <iframe src={previewFile.url} style={{ width: '100%', height: '100%', border: 'none' }} title="Vista previa PDF" />
+                                    <iframe src={`https://docs.google.com/viewer?url=${encodeURIComponent(previewFile.url)}&embedded=true`} style={{ width: '100%', height: '100%', border: 'none' }} title="Vista Previa PDF" />
                                 </div>
+                            ) : (
+                                <img src={previewFile.url} alt="Comprobante" style={{ maxWidth: '100%', maxHeight: '80vh', borderRadius: '12px', boxShadow: '0 20px 60px rgba(0,0,0,0.5)' }} />
                             )}
                         </div>
                     </div>

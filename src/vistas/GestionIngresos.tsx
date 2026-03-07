@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import {
     Plus,
@@ -32,6 +32,8 @@ const GestionIngresos = ({ user }: any) => {
     });
     const [gastos, setGastos] = useState<any[]>([]);
     const [fuentesExpandidas, setFuentesExpandidas] = useState<string[]>([]);
+    const [paginacionGastos, setPaginacionGastos] = useState<Record<string, number>>({});
+    const [listaVersion, setListaVersion] = useState<Record<string, number>>({});
     const [previewFile, setPreviewFile] = useState<{ url: string; type: 'image' | 'pdf' } | null>(null);
     const [saving, setSaving] = useState(false);
 
@@ -66,7 +68,6 @@ const GestionIngresos = ({ user }: any) => {
             .eq('año', anio);
 
         // 2. Obtener Gastos del mes para el desglose (incluyendo categoría)
-        // Calculamos el rango exacto del mes seleccionado para no fallar con meses de 28, 30 o 31 días
         const primerDia = new Date(anio, mes - 1, 1);
         const ultimoDia = new Date(anio, mes, 0);
 
@@ -82,22 +83,46 @@ const GestionIngresos = ({ user }: any) => {
         setLoading(false);
     };
 
-    const handleDownload = async () => {
-        if (!previewFile) return;
+    // Referencia para mantener la función actualizada en el closure del subscription
+    const fetchFuentesRef = useRef(fetchFuentes);
+    useEffect(() => {
+        fetchFuentesRef.current = fetchFuentes;
+    });
+
+    useEffect(() => {
+        const channel = supabase
+            .channel('ingresos_realtime')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'ingresos_fuentes' }, () => {
+                fetchFuentesRef.current();
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'gastos' }, () => {
+                fetchFuentesRef.current();
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, []);
+
+    const handleDownload = async (url: string = '', isPdfStr: boolean = false) => {
+        const downloadUrl = url || previewFile?.url;
+        const isPdfType = isPdfStr || previewFile?.type === 'pdf';
+        if (!downloadUrl) return;
         try {
-            const response = await fetch(previewFile.url);
+            const response = await fetch(downloadUrl);
             const blob = await response.blob();
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `comprobante-${Date.now()}.${previewFile.type === 'pdf' ? 'pdf' : 'jpg'}`;
-            document.body.appendChild(a);
-            a.click();
-            window.URL.revokeObjectURL(url);
-            document.body.removeChild(a);
-        } catch (error) {
-            console.error('Error al descargar:', error);
-            window.open(previewFile.url, '_blank');
+            const bUrl = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = bUrl;
+            link.download = `comprobante-${Date.now()}.${isPdfType ? 'pdf' : 'jpg'}`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(bUrl);
+        } catch (e) {
+            console.error("Error downloading:", e);
+            window.open(downloadUrl, '_blank');
         }
     };
 
@@ -322,10 +347,21 @@ const GestionIngresos = ({ user }: any) => {
                             const perc = f.monto_estimado > 0 ? Math.min(100, Math.round((totalGastadoFuente / f.monto_estimado) * 100)) : 0;
 
                             const toggleExpand = () => {
-                                setFuentesExpandidas(prev =>
-                                    prev.includes(f.id) ? prev.filter(id => id !== f.id) : [...prev, f.id]
-                                );
+                                setFuentesExpandidas(prev => {
+                                    const expanded = prev.includes(f.id);
+                                    if (!expanded) {
+                                        // Reset pagination when expanding
+                                        setPaginacionGastos(p => ({ ...p, [f.id]: 5 }));
+                                        return [...prev, f.id];
+                                    } else {
+                                        return prev.filter(id => id !== f.id);
+                                    }
+                                });
                             };
+
+                            const limit = paginacionGastos[f.id] || 5;
+                            const gastosMostrados = gastosAsociados.slice(0, limit);
+                            const hasMoreGastos = gastosAsociados.length > limit;
 
                             return (
                                 <div key={f.id} className="card" style={{ padding: '0', overflow: 'hidden' }}>
@@ -355,52 +391,118 @@ const GestionIngresos = ({ user }: any) => {
                                     </div>
 
                                     {isExpanded && (
-                                        <div className="fade-in" style={{ borderTop: '1px solid var(--border)', padding: '12px' }}>
+                                        <div
+                                            key={listaVersion[f.id] || 0}
+                                            className="fade-in"
+                                            style={{ borderTop: '1px solid var(--border)', padding: '12px' }}
+                                        >
                                             <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                                                 {gastosAsociados.length > 0 ? (
-                                                    gastosAsociados.map(g => (
-                                                        <div key={g.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 8px', borderRadius: '10px', transition: 'background 0.2s' }} className="hover-bg">
-                                                            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                                                                <div style={{ width: '32px', height: '32px', background: 'var(--bg)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
-                                                                    <Receipt size={16} />
+                                                    <>
+                                                        {gastosMostrados.map((g, idx) => (
+                                                            <div
+                                                                key={g.id}
+                                                                style={{
+                                                                    display: 'flex',
+                                                                    justifyContent: 'space-between',
+                                                                    alignItems: 'center',
+                                                                    padding: '10px 8px',
+                                                                    borderRadius: '10px',
+                                                                    transition: 'background 0.2s',
+                                                                    animationDelay: `${(idx % 5) * 0.05}s`
+                                                                }}
+                                                                className="hover-bg fade-in"
+                                                            >                                                                <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                                                                    <div style={{ width: '32px', height: '32px', background: 'var(--bg)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
+                                                                        <Receipt size={16} />
+                                                                    </div>
+                                                                    <div>
+                                                                        <p style={{ fontSize: '13px', fontWeight: '600' }}>{g.titulo}</p>
+                                                                        <p style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{formatearFecha(g.fecha)} • {g.categorias?.nombre}</p>
+                                                                    </div>
                                                                 </div>
-                                                                <div>
-                                                                    <p style={{ fontSize: '13px', fontWeight: '600' }}>{g.titulo}</p>
-                                                                    <p style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{formatearFecha(g.fecha)} • {g.categorias?.nombre}</p>
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                    <p style={{ fontSize: '13px', fontWeight: '700', color: 'var(--danger)' }}>
+                                                                        -${new Intl.NumberFormat('es-CO').format(g.monto)}
+                                                                    </p>
+                                                                    {g.comprobante_url && (
+                                                                        <button
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                const fullUrl = `https://yupaibsqnxfismckuqje.supabase.co/storage/v1/object/public/comprobantes/${g.comprobante_url}`;
+                                                                                const isPdf = g.comprobante_url.toLowerCase().endsWith('.pdf');
+                                                                                setPreviewFile({ url: fullUrl, type: isPdf ? 'pdf' : 'image' });
+                                                                            }}
+                                                                            style={{
+                                                                                background: 'rgba(16, 185, 129, 0.1)',
+                                                                                border: 'none',
+                                                                                color: 'var(--primary)',
+                                                                                cursor: 'pointer',
+                                                                                display: 'flex',
+                                                                                alignItems: 'center',
+                                                                                justifyContent: 'center',
+                                                                                width: '30px',
+                                                                                height: '30px',
+                                                                                borderRadius: '8px'
+                                                                            }}
+                                                                            title="Ver comprobante"
+                                                                        >
+                                                                            <Eye size={16} />
+                                                                        </button>
+                                                                    )}
                                                                 </div>
                                                             </div>
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                                <p style={{ fontSize: '13px', fontWeight: '700', color: 'var(--danger)' }}>
-                                                                    -${new Intl.NumberFormat('es-CO').format(g.monto)}
-                                                                </p>
-                                                                {g.comprobante_url && (
-                                                                    <button
-                                                                        onClick={(e) => {
-                                                                            e.stopPropagation();
-                                                                            const fullUrl = `https://yupaibsqnxfismckuqje.supabase.co/storage/v1/object/public/comprobantes/${g.comprobante_url}`;
-                                                                            const isPdf = g.comprobante_url.toLowerCase().endsWith('.pdf');
-                                                                            setPreviewFile({ url: fullUrl, type: isPdf ? 'pdf' : 'image' });
-                                                                        }}
-                                                                        style={{
-                                                                            background: 'rgba(16, 185, 129, 0.1)',
-                                                                            border: 'none',
-                                                                            color: 'var(--primary)',
-                                                                            cursor: 'pointer',
-                                                                            display: 'flex',
-                                                                            alignItems: 'center',
-                                                                            justifyContent: 'center',
-                                                                            width: '30px',
-                                                                            height: '30px',
-                                                                            borderRadius: '8px'
-                                                                        }}
-                                                                        title="Ver comprobante"
-                                                                    >
-                                                                        <Eye size={16} />
-                                                                    </button>
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                    ))
+                                                        ))}
+                                                        {hasMoreGastos ? (
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setPaginacionGastos(p => ({ ...p, [f.id]: gastosAsociados.length }));
+                                                                    setListaVersion(v => ({ ...v, [f.id]: (v[f.id] || 0) + 1 }));
+                                                                }}
+                                                                style={{
+                                                                    width: '100%',
+                                                                    padding: '10px',
+                                                                    marginTop: '8px',
+                                                                    background: 'var(--bg)',
+                                                                    border: '1.5px solid var(--border)',
+                                                                    borderRadius: '12px',
+                                                                    color: 'var(--primary)',
+                                                                    fontSize: '12px',
+                                                                    fontWeight: '700',
+                                                                    cursor: 'pointer',
+                                                                    transition: 'all 0.2s'
+                                                                }}
+                                                                className="btn-hover-soft"
+                                                            >
+                                                                Mostrar todos los movimientos ({gastosAsociados.length})
+                                                            </button>
+                                                        ) : gastosAsociados.length > 5 && (
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setPaginacionGastos(p => ({ ...p, [f.id]: 5 }));
+                                                                    setListaVersion(v => ({ ...v, [f.id]: (v[f.id] || 0) + 1 }));
+                                                                }}
+                                                                style={{
+                                                                    width: '100%',
+                                                                    padding: '10px',
+                                                                    marginTop: '8px',
+                                                                    background: 'var(--bg)',
+                                                                    border: '1.5px solid var(--border)',
+                                                                    borderRadius: '12px',
+                                                                    color: 'var(--primary)',
+                                                                    fontSize: '11px',
+                                                                    fontWeight: '700',
+                                                                    cursor: 'pointer',
+                                                                    transition: 'all 0.2s'
+                                                                }}
+                                                                className="btn-hover-soft"
+                                                            >
+                                                                Mostrar menos movimientos
+                                                            </button>
+                                                        )}
+                                                    </>
                                                 ) : (
                                                     <p style={{ textAlign: 'center', padding: '20px', fontSize: '12px', color: 'var(--text-muted)', fontStyle: 'italic' }}>
                                                         No hay gastos registrados para esta fuente.
@@ -440,7 +542,7 @@ const GestionIngresos = ({ user }: any) => {
                     <div className="fade-in" style={{ position: 'relative', width: 'auto', maxWidth: '100%', maxHeight: '90vh', display: 'flex', flexDirection: 'column', alignItems: 'center' }} onClick={e => e.stopPropagation()}>
                         <div style={{ position: 'absolute', top: '-50px', right: 0, display: 'flex', gap: '12px' }}>
                             <button
-                                onClick={handleDownload}
+                                onClick={() => previewFile && handleDownload(previewFile.url, previewFile.type === 'pdf')}
                                 style={{ background: 'var(--primary)', color: 'white', border: 'none', borderRadius: '12px', padding: '10px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', fontWeight: '600' }}
                                 title="Descargar"
                             >
@@ -455,12 +557,12 @@ const GestionIngresos = ({ user }: any) => {
                             </button>
                         </div>
 
-                        {previewFile.type === 'image' ? (
-                            <img src={previewFile.url} alt="Comprobante" style={{ maxWidth: '100%', maxHeight: '80vh', borderRadius: '12px', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.2)' }} />
-                        ) : (
+                        {previewFile.type === 'pdf' ? (
                             <div style={{ width: '90vw', maxWidth: '800px', height: '80vh', background: 'white', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.2)' }}>
-                                <iframe src={previewFile.url} style={{ width: '100%', height: '100%', border: 'none' }} title="Vista previa PDF" />
+                                <iframe src={`https://docs.google.com/viewer?url=${encodeURIComponent(previewFile.url)}&embedded=true`} style={{ width: '100%', height: '100%', border: 'none' }} title="Vista Previa PDF" />
                             </div>
+                        ) : (
+                            <img src={previewFile.url} alt="Comprobante" style={{ maxWidth: '100%', maxHeight: '80vh', borderRadius: '12px', boxShadow: '0 20px 60px rgba(0,0,0,0.5)' }} />
                         )}
                     </div>
                 </div>
