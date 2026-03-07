@@ -39,6 +39,7 @@ const App = () => {
   };
 
   useEffect(() => {
+    // 1. Carga inicial rápida
     supabase.auth.getSession().then(({ data: { session } }) => {
       const currentUser = session?.user ?? null;
       setUser(currentUser);
@@ -46,6 +47,7 @@ const App = () => {
       setLoading(false);
     });
 
+    // 2. Suscripción a cambios
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       const currentUser = session?.user ?? null;
       setUser(currentUser);
