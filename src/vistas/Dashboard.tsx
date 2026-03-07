@@ -7,23 +7,15 @@ import {
     Receipt,
     ArrowUpRight,
     ArrowDownRight,
-    ChevronLeft,
-    ChevronRight,
     ChevronDown,
     ChevronUp
 } from 'lucide-react';
 import { formatearFecha, getISODateLocal } from '../utilidades/fechas';
 import { formatearNombreMostrar } from '../utilidades/formato';
+import FiltroRangoFechas from '../componentes/FiltroRangoFechas';
+//import type { Granularidad } from '../componentes/FiltroRangoFechas';
 
-type Granularidad = 'dia' | 'semana' | 'mes' | 'año' | 'periodo';
 
-const PERIODOS: { id: Granularidad; label: string }[] = [
-    { id: 'dia', label: 'Día' },
-    { id: 'semana', label: 'Semana' },
-    { id: 'mes', label: 'Mes' },
-    { id: 'año', label: 'Año' },
-    { id: 'periodo', label: 'Periodo' },
-];
 
 const Skeleton = ({ width, height, borderRadius = '12px' }: { width?: string, height: string, borderRadius?: string }) => (
     <div className="skeleton" style={{ width: width || '100%', height, borderRadius, background: 'var(--border)', opacity: 0.1, position: 'relative', overflow: 'hidden' }}>
@@ -52,57 +44,18 @@ const Dashboard = ({ user, perfil }: any) => {
     const [fuentesExpandidas, setFuentesExpandidas] = useState<string[]>([]);
     const [loading, setLoading] = useState(true);
 
-    const [granularidad, setGranularidad] = useState<Granularidad>('mes');
-    const [fechaNavegacion, setFechaNavegacion] = useState<Date>(new Date());
+    const [rangoSeleccionado, setRangoSeleccionado] = useState<any>(null);
 
     useEffect(() => {
-        fetchData();
-    }, [user.id, granularidad, fechaNavegacion]);
-
-    const getStartEnd = (date: Date, gran: Granularidad) => {
-        const start = new Date(date);
-        const end = new Date(date);
-        switch (gran) {
-            case 'dia':
-                start.setHours(0, 0, 0, 0); end.setHours(23, 59, 59, 999);
-                break;
-            case 'semana':
-                const dia = start.getDay(); // 0 (Sun) to 6 (Sat)
-                const diff = start.getDate() - dia + (dia === 0 ? -6 : 1); // Adjust to Monday
-                start.setDate(diff);
-                start.setHours(0, 0, 0, 0);
-                end.setTime(start.getTime());
-                end.setDate(start.getDate() + 6);
-                end.setHours(23, 59, 59, 999);
-                break;
-            case 'mes':
-                start.setDate(1); start.setHours(0, 0, 0, 0);
-                end.setMonth(end.getMonth() + 1, 0); end.setHours(23, 59, 59, 999);
-                break;
-            case 'año':
-                start.setMonth(0, 1); start.setHours(0, 0, 0, 0);
-                end.setMonth(11, 31); end.setHours(23, 59, 59, 999);
-                break;
-            default:
-                start.setFullYear(2000); end.setFullYear(2100);
+        if (rangoSeleccionado) {
+            fetchData();
         }
-        return { start, end };
-    };
-
-    const navegarFecha = (direccion: number) => {
-        const nueva = new Date(fechaNavegacion);
-        switch (granularidad) {
-            case 'dia': nueva.setDate(nueva.getDate() + direccion); break;
-            case 'semana': nueva.setDate(nueva.getDate() + (direccion * 7)); break;
-            case 'mes': nueva.setMonth(nueva.getMonth() + direccion); break;
-            case 'año': nueva.setFullYear(nueva.getFullYear() + direccion); break;
-        }
-        setFechaNavegacion(nueva);
-    };
+    }, [user.id, rangoSeleccionado]);
 
     const fetchData = async () => {
+        if (!rangoSeleccionado) return;
         setLoading(true);
-        const { start, end } = getStartEnd(fechaNavegacion, granularidad);
+        const { start, end, granularidad } = rangoSeleccionado;
         const startISO = getISODateLocal(start);
         const endISO = getISODateLocal(end);
 
@@ -119,9 +72,10 @@ const Dashboard = ({ user, perfil }: any) => {
             prevEnd.setDate(prevEnd.getDate() - 7);
         }
 
-        // 1. Obtener rango completo del MES para el cálculo de "Disponible" (Opción 1)
-        const mesActual = fechaNavegacion.getMonth() + 1;
-        const anioActual = fechaNavegacion.getFullYear();
+        // 1. Obtener rango completo del MES para el cálculo de "Disponible" (Opción 1) de la fecha de navegación o selección
+        const startForMonth = (granularidad === 'periodo' && start) ? start : start;
+        const mesActual = startForMonth.getMonth() + 1;
+        const anioActual = startForMonth.getFullYear();
         const startOfMonth = new Date(anioActual, mesActual - 1, 1);
         const endOfMonth = new Date(anioActual, mesActual, 0);
         const startOfMonthISO = getISODateLocal(startOfMonth);
@@ -141,7 +95,7 @@ const Dashboard = ({ user, perfil }: any) => {
         const esMesActual = mesActual === (hoy.getMonth() + 1) && anioActual === hoy.getFullYear();
 
         if (ingresos?.length === 0 && esMesActual) {
-            const anterior = new Date(fechaNavegacion);
+            const anterior = new Date(startForMonth);
             anterior.setMonth(anterior.getMonth() - 1);
             const mesAnt = anterior.getMonth() + 1;
             const anioAnt = anterior.getFullYear();
@@ -295,20 +249,7 @@ const Dashboard = ({ user, perfil }: any) => {
     const diff = stats.mesAnterior > 0 ? ((stats.totalGastado - stats.mesAnterior) / stats.mesAnterior * 100).toFixed(0) : null;
     const porcentajePresupuesto = stats.capacidadTotal > 0 ? Math.min(Math.round((stats.totalGastado / stats.capacidadTotal) * 100), 100) : 0;
 
-    const renderRangoTexto = () => {
-        const { start, end } = getStartEnd(fechaNavegacion, granularidad);
-        const options: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'long' };
 
-        if (granularidad === 'dia') return start.toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-        if (granularidad === 'mes') return start.toLocaleDateString('es-CO', { month: 'long', year: 'numeric' });
-        if (granularidad === 'año') return start.getFullYear().toString();
-
-        if (granularidad === 'semana') {
-            const optionsEnd: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'long', year: 'numeric' };
-            return `${start.toLocaleDateString('es-CO', options)} - ${end.toLocaleDateString('es-CO', optionsEnd)}`;
-        }
-        return 'Historial Completo';
-    };
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', paddingBottom: '40px' }}>
@@ -317,45 +258,8 @@ const Dashboard = ({ user, perfil }: any) => {
                 <p style={{ color: 'var(--text-muted)', fontSize: '14px' }}>Resumen de tus finanzas</p>
             </div>
 
-            {/* Navegación por Periodos (Estilo Gastos/Deudas) */}
-            <div className="card" style={{ padding: '0', overflow: 'visible', boxShadow: '0 2px 10px rgba(0,0,0,0.03)', borderRadius: '16px', position: 'relative', zIndex: 50 }}>
-                <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', overflowX: 'auto' }}>
-                    {PERIODOS.map(p => (
-                        <button
-                            key={p.id}
-                            onClick={() => setGranularidad(p.id)}
-                            style={{
-                                flex: 1,
-                                padding: '10px 6px',
-                                background: granularidad === p.id ? 'var(--bg)' : 'transparent',
-                                border: 'none',
-                                borderBottom: granularidad === p.id ? '2px solid var(--primary)' : '2px solid transparent',
-                                color: granularidad === p.id ? 'var(--primary)' : 'var(--text-muted)',
-                                fontWeight: granularidad === p.id ? '700' : '500',
-                                fontSize: '11px',
-                                cursor: 'pointer',
-                                whiteSpace: 'nowrap',
-                                transition: 'all 0.2s'
-                            }}
-                        >
-                            {p.label}
-                        </button>
-                    ))}
-                </div>
-                {granularidad !== 'periodo' && (
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', background: 'var(--card)', borderBottomLeftRadius: '16px', borderBottomRightRadius: '16px' }}>
-                        <button onClick={() => navegarFecha(-1)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}>
-                            <ChevronLeft size={18} />
-                        </button>
-                        <span style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text)', textTransform: 'capitalize' }}>
-                            {renderRangoTexto()}
-                        </span>
-                        <button onClick={() => navegarFecha(1)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}>
-                            <ChevronRight size={18} />
-                        </button>
-                    </div>
-                )}
-            </div>
+            {/* Navegación por Periodos Centralizado */}
+            <FiltroRangoFechas onChange={setRangoSeleccionado} />
 
             {loading ? (
                 <>
@@ -372,7 +276,7 @@ const Dashboard = ({ user, perfil }: any) => {
                     {/* Card Principal */}
                     <div className="card" style={{ background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)', color: 'white', border: 'none', position: 'relative', overflow: 'hidden', minHeight: '160px', display: 'flex', alignItems: 'center', boxShadow: '0 10px 25px -5px rgba(16, 185, 129, 0.3)' }}>
                         <div style={{ position: 'relative', zIndex: 1, width: '100%', padding: '24px' }}>
-                            <p style={{ fontSize: '14px', opacity: 0.9 }}>Total Gastado {granularidad === 'mes' ? 'del Mes' : 'en el Periodo'}</p>
+                            <p style={{ fontSize: '14px', opacity: 0.9 }}>Total Gastado {rangoSeleccionado?.granularidad === 'mes' ? 'del Mes' : 'en el Periodo'}</p>
                             <h3 style={{ fontSize: '36px', fontWeight: '900', margin: '8px 0', color: 'white', letterSpacing: '-0.03em' }}>
                                 ${new Intl.NumberFormat('es-CO').format(stats.totalGastado)}
                             </h3>
